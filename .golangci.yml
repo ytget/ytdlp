@@ -1,0 +1,29 @@
+run:
+  timeout: 3m
+  tests: true
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - errcheck
+    - misspell
+    - gofmt
+    - goimports
+    - revive
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/romanitalian/ytdlp
+  revive:
+    rules:
+      - name: var-naming
+      - name: exported
+      - name: errorf
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
