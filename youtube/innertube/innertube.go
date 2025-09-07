@@ -735,10 +735,14 @@ func (c *Client) maybeApplyBotguard(req *http.Request) error {
 	}
 	// Prepare input
 	visitorId := req.Header.Get("x-goog-visitor-id")
+	name := c.clientName
+	if strings.TrimSpace(name) == "" {
+		name = clientNameWEB
+	}
 	in := botguard.Input{
 		UserAgent:     req.Header.Get("User-Agent"),
 		PageURL:       "https://www.youtube.com/", // best-effort
-		ClientName:    c.clientName,
+		ClientName:    name,
 		ClientVersion: c.clientVer,
 		VisitorID:     visitorId,
 	}
