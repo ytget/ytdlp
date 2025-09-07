@@ -56,6 +56,9 @@ func main() {
 		flagBGCacheDir   string
 		flagBGCacheTTL   time.Duration
 		flagBGScriptPath string
+		flagClientName   string
+		flagClientVer    string
+		flagPrintURL     bool
 	)
 
 	flag.StringVar(&flagFormat, "format", "", "Format selector (e.g., 'itag=22', 'best', 'height<=480')")
@@ -76,6 +79,10 @@ func main() {
 	flag.StringVar(&flagBGCacheDir, "botguard-cache-dir", "", "Botguard cache directory (for file mode)")
 	flag.DurationVar(&flagBGCacheTTL, "botguard-ttl", 30*time.Minute, "Default Botguard token TTL if solver doesn't set")
 	flag.StringVar(&flagBGScriptPath, "botguard-script", "", "Path to JS script implementing bgAttest(input)")
+	flag.StringVar(&flagClientName, "client-name", "", "Innertube client name (default ANDROID)")
+	flag.StringVar(&flagClientVer, "client-version", "", "Innertube client version (default 20.10.38)")
+	flag.BoolVar(&flagPrintURL, "g", false, "Print final media URL and exit (no download)")
+	flag.BoolVar(&flagPrintURL, "print-url", false, "Print final media URL and exit (no download)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags] <video_or_playlist_url>\n", os.Args[0])
@@ -129,10 +136,6 @@ func main() {
 		cache = botguard.NewMemoryCache()
 	}
 
-	// Helper to wrap TTL if solver returns zero ExpiresAt
-	wrapTTL := func(get func() (*ytdlp.VideoInfo, error)) (*ytdlp.VideoInfo, error) { return get() }
-	_ = wrapTTL // placeholder to avoid unused warning if not used later
-
 	if flagPlaylist {
 		playlistID, err := parsePlaylistID(input)
 		if err != nil || playlistID == "" {
@@ -156,6 +159,9 @@ func main() {
 			WithBotguard(bgMode, solver, cache).
 			WithBotguardDebug(flagBGDebug).
 			WithBotguardTTL(flagBGCacheTTL)
+		if flagClientName != "" || flagClientVer != "" {
+			d = d.WithInnertubeClient(flagClientName, flagClientVer)
+		}
 		items, err := d.GetPlaylistItemsAll(context.Background(), playlistID, flagLimit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to fetch playlist: %v\n", err)
@@ -179,6 +185,9 @@ func main() {
 					WithBotguard(bgMode, solver, cache).
 					WithBotguardDebug(flagBGDebug).
 					WithBotguardTTL(flagBGCacheTTL)
+				if flagClientName != "" || flagClientVer != "" {
+					localD = localD.WithInnertubeClient(flagClientName, flagClientVer)
+				}
 				if flagFormat != "" || flagExt != "" {
 					localD = localD.WithFormat(flagFormat, flagExt)
 				}
@@ -223,13 +232,16 @@ func main() {
 		WithBotguard(bgMode, solver, cache).
 		WithBotguardDebug(flagBGDebug).
 		WithBotguardTTL(flagBGCacheTTL)
+	if flagClientName != "" || flagClientVer != "" {
+		d = d.WithInnertubeClient(flagClientName, flagClientVer)
+	}
 	if flagFormat != "" || flagExt != "" {
 		d = d.WithFormat(flagFormat, flagExt)
 	}
 	if flagOutput != "" {
 		d = d.WithOutputPath(flagOutput)
 	}
-	if !flagNoProgress {
+	if !flagNoProgress && !flagPrintURL {
 		d = d.WithProgress(func(p ytdlp.Progress) {
 			if p.TotalSize > 0 {
 				_, _ = fmt.Fprintf(os.Stdout, "Downloaded %.1f%%\r", p.Percent)
@@ -238,6 +250,17 @@ func main() {
 	}
 	if bps := parseRate(flagRateLimit); bps > 0 {
 		d = d.WithRateLimit(bps)
+	}
+
+	if flagPrintURL {
+		finalURL, info, err := d.ResolveURL(context.Background(), input)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintln(os.Stdout, finalURL)
+		_ = info
+		return
 	}
 
 	info, err := d.Download(context.Background(), input)

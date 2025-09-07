@@ -44,12 +44,14 @@ type Format = types.Format
 //
 // Use chainable setters on Downloader to populate these options.
 type DownloadOptions struct {
-	FormatSelector string
-	DesiredExt     string
-	OutputPath     string
-	HTTPClient     *http.Client
-	ProgressFunc   func(Progress)
-	RateLimitBps   int64
+	FormatSelector  string
+	DesiredExt      string
+	OutputPath      string
+	HTTPClient      *http.Client
+	ProgressFunc    func(Progress)
+	RateLimitBps    int64
+	ITClientName    string
+	ITClientVersion string
 }
 
 // Progress describes current progress of an ongoing download.
@@ -134,6 +136,13 @@ func (d *Downloader) WithRateLimit(bytesPerSecond int64) *Downloader {
 	return d
 }
 
+// WithInnertubeClient sets the Innertube client name and version to use.
+func (d *Downloader) WithInnertubeClient(name, version string) *Downloader {
+	d.options.ITClientName = strings.TrimSpace(name)
+	d.options.ITClientVersion = strings.TrimSpace(version)
+	return d
+}
+
 // WithBotguard configures Botguard attestation usage.
 func (d *Downloader) WithBotguard(mode botguard.Mode, solver botguard.Solver, cache botguard.Cache) *Downloader {
 	d.bg.mode = mode
@@ -154,126 +163,119 @@ func (d *Downloader) WithBotguardTTL(ttl time.Duration) *Downloader {
 	return d
 }
 
-// Download retrieves video metadata and downloads the selected format to disk.
-// It performs: metadata fetch, format selection, then resolves URL for the chosen format only.
-func (d *Downloader) Download(ctx context.Context, videoURL string) (*VideoInfo, error) {
-	log.Printf("Starting download for URL: %s", videoURL)
+// ResolveURL performs the metadata fetch and URL resolution, returning the final media URL and basic info.
+func (d *Downloader) ResolveURL(ctx context.Context, videoURL string) (string, *VideoInfo, error) {
+	log.Printf("Starting resolve for URL: %s", videoURL)
 
 	// Extract video ID from URL
 	videoID, err := extractVideoID(videoURL)
 	if err != nil {
-		return nil, fmt.Errorf("extract video id failed: %v", err)
+		return "", nil, fmt.Errorf("extract video id failed: %v", err)
 	}
 	log.Printf("Extracted video ID: %s", videoID)
 
-	// 1. Create HTTP client with HTTP/1.1 transport
+	// Create HTTP client with HTTP/1.1 transport
 	httpClient := client.New()
 	if d.options.HTTPClient != nil {
 		httpClient.HTTPClient = d.options.HTTPClient
-		// Ensure HTTP/2 is disabled to avoid handshake issues
 		if transport, ok := httpClient.HTTPClient.Transport.(*http.Transport); ok {
 			transport.ForceAttemptHTTP2 = false
 		}
 	} else {
-		// Create default HTTP client with HTTP/1.1 transport
 		httpClient.HTTPClient = &http.Client{
-			Transport: &http.Transport{
-				ForceAttemptHTTP2: false, // Disable HTTP/2
-				MaxIdleConns:      100,
-				IdleConnTimeout:   90 * time.Second,
-			},
-			Timeout: 30 * time.Second,
+			Transport: &http.Transport{ForceAttemptHTTP2: false, MaxIdleConns: 100, IdleConnTimeout: 90 * time.Second},
+			Timeout:   30 * time.Second,
 		}
 	}
 
-	// 2. Fetch video metadata
-	log.Printf("Fetching video metadata...")
-	// 3. Get player response
+	// Fetch player response via Innertube
 	itClient := innertube.New(httpClient.HTTPClient)
 	itClient.WithBotguard(d.bg.solver, d.bg.mode, d.bg.cache).WithBotguardDebug(d.bg.debug).WithBotguardTTL(d.bg.ttl)
-	// Try ANDROID client to obtain directly signed URLs
-	itClient.WithClient("ANDROID", "20.10.38")
+	name := strings.TrimSpace(d.options.ITClientName)
+	ver := strings.TrimSpace(d.options.ITClientVersion)
+	if name == "" {
+		name = "ANDROID"
+	}
+	if ver == "" {
+		ver = "20.10.38"
+	}
+	itClient.WithClient(name, ver)
 	playerResponse, err := itClient.GetPlayerResponse(videoID)
 	if err != nil {
-		return nil, fmt.Errorf("get player response failed: %v", err)
+		return "", nil, fmt.Errorf("get player response failed: %v", err)
 	}
 	log.Printf("Video metadata received, title: %s", playerResponse.VideoDetails.Title)
 
-	// Check playability status and map errors
+	// Map playability
 	s := strings.ToUpper(playerResponse.PlayabilityStatus.Status)
 	reason := strings.ToLower(playerResponse.PlayabilityStatus.Reason)
 	switch s {
 	case "ERROR":
 		if strings.Contains(reason, "geograph") || strings.Contains(reason, "available in your country") {
-			return nil, errs.ErrGeoBlocked
+			return "", nil, errs.ErrGeoBlocked
 		}
 		if strings.Contains(reason, "rate limit") || strings.Contains(reason, "quota") {
-			return nil, errs.ErrRateLimited
+			return "", nil, errs.ErrRateLimited
 		}
-		return nil, errs.ErrVideoUnavailable
+		return "", nil, errs.ErrVideoUnavailable
 	case "LOGIN_REQUIRED":
-		return nil, errs.ErrAgeRestricted
+		return "", nil, errs.ErrAgeRestricted
 	case "UNPLAYABLE":
 		if strings.Contains(reason, "private") {
-			return nil, errs.ErrPrivate
+			return "", nil, errs.ErrPrivate
 		}
-		return nil, errs.ErrVideoUnavailable
+		return "", nil, errs.ErrVideoUnavailable
 	}
 
-	// 3. Parse formats (no decipher yet)
-	log.Printf("Parsing video formats...")
+	// Parse formats and select
 	availableFormats, err := formats.ParseFormats(playerResponse)
 	if err != nil {
-		return nil, fmt.Errorf("parse formats failed: %v", err)
+		return "", nil, fmt.Errorf("parse formats failed: %v", err)
 	}
-	log.Printf("Found %d available formats", len(availableFormats))
-
-	// 4. Select a suitable format using metadata only
-	log.Printf("Selecting format (selector: %s, desired ext: %s)...", d.options.FormatSelector, d.options.DesiredExt)
-	desiredExt := d.options.DesiredExt
-	selectedFormat := formats.SelectFormat(availableFormats, d.options.FormatSelector, desiredExt)
+	selectedFormat := formats.SelectFormat(availableFormats, d.options.FormatSelector, d.options.DesiredExt)
 	if selectedFormat == nil {
-		return nil, fmt.Errorf("no suitable format found")
+		return "", nil, fmt.Errorf("no suitable format found")
 	}
-	log.Printf("Selected format: itag=%d, mime=%s, quality=%s", selectedFormat.Itag, selectedFormat.MimeType, selectedFormat.Quality)
 
-	// 5. Resolve final URL for the selected format only (decipher s/n if needed)
+	// Resolve final URL
 	finalURL := selectedFormat.URL
 	var playerJSURL string
 	if strings.TrimSpace(finalURL) == "" || strings.Contains(finalURL, "&n=") || strings.Contains(finalURL, "?n=") {
-		log.Printf("Resolving URL for selected format (need decipher/n)...")
 		pjsURL, perr := cipher.FetchPlayerJS(httpClient.HTTPClient, videoURL)
 		if perr != nil {
-			return nil, fmt.Errorf("fetch player.js url failed: %v", perr)
+			return "", nil, fmt.Errorf("fetch player.js url failed: %v", perr)
 		}
 		playerJSURL = pjsURL
-		log.Printf("Player.js URL: %s", playerJSURL)
-
-		// Log player.js version and SHA1(8)
+		// Optional debug
 		if body, src, gerr := cipher.DebugGetPlayerJS(httpClient.HTTPClient, playerJSURL); gerr == nil {
 			h := sha1.Sum(body)
-			shortSHA := fmt.Sprintf("%x", h)[:8]
-			ver := ""
-			if idx := strings.Index(playerJSURL, "/s/player/"); idx >= 0 {
-				rest := playerJSURL[idx+len("/s/player/"):]
-				if p := strings.Index(rest, "/"); p > 0 {
-					ver = rest[:p]
-				}
-			}
-			log.Printf("player.js: url=%s, version=%s, sha1=%s, source=%s", playerJSURL, ver, shortSHA, src)
+			_ = src
+			_ = h
 		}
-
 		u, rerr := formats.ResolveFormatURL(httpClient.HTTPClient, *selectedFormat, playerJSURL)
 		if rerr != nil {
-			return nil, fmt.Errorf("resolve selected format url failed: %v", rerr)
+			return "", nil, fmt.Errorf("resolve selected format url failed: %v", rerr)
 		}
 		finalURL = u
+	}
+
+	info := &VideoInfo{ID: videoID, Title: playerResponse.VideoDetails.Title, Formats: availableFormats, Description: ""}
+	return finalURL, info, nil
+}
+
+// Download retrieves video metadata, resolves URL, and downloads to disk.
+func (d *Downloader) Download(ctx context.Context, videoURL string) (*VideoInfo, error) {
+	log.Printf("Starting download for URL: %s", videoURL)
+
+	finalURL, info, err := d.ResolveURL(ctx, videoURL)
+	if err != nil {
+		return nil, err
 	}
 
 	// 6. Download video
 	log.Printf("Starting video download...")
 	log.Printf("Final media URL: %s", finalURL)
-	dl := downloader.New(httpClient.HTTPClient, func(p downloader.Progress) {
+	dl := downloader.New(d.options.HTTPClient, func(p downloader.Progress) {
 		if d.options.ProgressFunc != nil {
 			d.options.ProgressFunc(Progress{TotalSize: p.TotalSize, DownloadedSize: p.DownloadedSize, Percent: p.Percent})
 		}
@@ -281,19 +283,38 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) (*VideoInfo,
 	outputPath := d.options.OutputPath
 	if outputPath == "" {
 		// derive extension from mime using helper
-		ext := mimeext.ExtFromMime(selectedFormat.MimeType)
-		title := playerResponse.VideoDetails.Title
+		// try to infer extension from selected format if available
+		var chosen types.Format
+		if len(info.Formats) > 0 {
+			for _, f := range info.Formats {
+				if strings.Contains(finalURL, strconv.Itoa(f.Itag)) {
+					chosen = f
+					break
+				}
+			}
+		}
+		ext := mimeext.ExtFromMime(chosen.MimeType)
+		title := info.Title
 		if strings.TrimSpace(title) == "" {
-			title = strconv.Itoa(selectedFormat.Itag)
+			title = "video"
 		}
 		outputPath = internalSanitize.ToSafeFilename(title, ext)
 	} else {
 		// if outputPath is a directory, derive a safe filename and join
 		if fi, statErr := os.Stat(outputPath); statErr == nil && fi.IsDir() {
-			ext := mimeext.ExtFromMime(selectedFormat.MimeType)
-			title := playerResponse.VideoDetails.Title
+			var chosen types.Format
+			if len(info.Formats) > 0 {
+				for _, f := range info.Formats {
+					if strings.Contains(finalURL, strconv.Itoa(f.Itag)) {
+						chosen = f
+						break
+					}
+				}
+			}
+			ext := mimeext.ExtFromMime(chosen.MimeType)
+			title := info.Title
 			if strings.TrimSpace(title) == "" {
-				title = strconv.Itoa(selectedFormat.Itag)
+				title = "video"
 			}
 			name := internalSanitize.ToSafeFilename(title, ext)
 			outputPath = filepath.Join(outputPath, name)
@@ -304,15 +325,7 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) (*VideoInfo,
 		return nil, fmt.Errorf("download failed: %v", err)
 	}
 
-	// 7. Build result
-	videoInfo := &VideoInfo{
-		ID:          videoID,
-		Title:       playerResponse.VideoDetails.Title,
-		Formats:     availableFormats,
-		Description: "",
-	}
-
-	return videoInfo, nil
+	return info, nil
 }
 
 // GetPlaylistItems returns minimal playlist items for a playlist ID (MVP: first page only).
