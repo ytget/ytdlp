@@ -5,7 +5,6 @@ SHELL:=bash
 
 .PHONY: help
 help: ## Available commands
-	@clear
 	@echo "Available commands:"
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[0;33m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 	@echo ""
@@ -15,7 +14,11 @@ help: ## Available commands
 
 .PHONY: build
 build: ## Build application
-	go build ./...
+	go build -o ytdlp_v2 ./cmd/ytdlp
+
+.PHONY: install
+install: ## Install application locally
+	go install ./...
 
 .PHONY: test
 test: ## Run tests
@@ -60,6 +63,10 @@ e2e-url: ## Run e2e test with a specific URL: make e2e-url URL="https://..."
 .PHONY: b
 b: ## Build application
 	@make build
+
+.PHONY: i
+i: ## Install application locally
+	@make install
 
 .PHONY: t
 t: ## Run tests

@@ -2,17 +2,22 @@ package ytdlp
 
 import (
 	"context"
+	"crypto/sha1"
 	"fmt"
+	"log"
 	"net/http"
+	"net/http/pprof"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ytget/ytdlp/client"
 	"github.com/ytget/ytdlp/downloader"
 	"github.com/ytget/ytdlp/errs"
+	"github.com/ytget/ytdlp/internal/botguard"
 	"github.com/ytget/ytdlp/internal/mimeext"
 	internalSanitize "github.com/ytget/ytdlp/internal/sanitize"
 	"github.com/ytget/ytdlp/types"
@@ -58,10 +63,37 @@ type Progress struct {
 // YouTube videos using internal clients and helpers.
 type Downloader struct {
 	options DownloadOptions
+	bg      struct {
+		solver botguard.Solver
+		mode   botguard.Mode
+		cache  botguard.Cache
+		debug  bool
+		ttl    time.Duration
+	}
+}
+
+// startPprofServer starts a pprof server for debugging
+func startPprofServer() {
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+		log.Printf("Starting pprof server on :6060")
+		if err := http.ListenAndServe(":6060", mux); err != nil {
+			log.Printf("pprof server error: %v", err)
+		}
+	}()
 }
 
 // New creates a new Downloader instance with default options.
 func New() *Downloader {
+	if os.Getenv("YTDLP_PPROF") == "1" {
+		startPprofServer()
+	}
 	return &Downloader{}
 }
 
@@ -102,28 +134,70 @@ func (d *Downloader) WithRateLimit(bytesPerSecond int64) *Downloader {
 	return d
 }
 
+// WithBotguard configures Botguard attestation usage.
+func (d *Downloader) WithBotguard(mode botguard.Mode, solver botguard.Solver, cache botguard.Cache) *Downloader {
+	d.bg.mode = mode
+	d.bg.solver = solver
+	d.bg.cache = cache
+	return d
+}
+
+// WithBotguardDebug enables Botguard debug logging.
+func (d *Downloader) WithBotguardDebug(debug bool) *Downloader {
+	d.bg.debug = debug
+	return d
+}
+
+// WithBotguardTTL sets default Botguard TTL when solver does not specify ExpiresAt.
+func (d *Downloader) WithBotguardTTL(ttl time.Duration) *Downloader {
+	d.bg.ttl = ttl
+	return d
+}
+
 // Download retrieves video metadata and downloads the selected format to disk.
-// It performs: metadata fetch, player.js resolution, signature deciphering,
-// format selection, and a chunked download with retries.
+// It performs: metadata fetch, format selection, then resolves URL for the chosen format only.
 func (d *Downloader) Download(ctx context.Context, videoURL string) (*VideoInfo, error) {
+	log.Printf("Starting download for URL: %s", videoURL)
+
 	// Extract video ID from URL
 	videoID, err := extractVideoID(videoURL)
 	if err != nil {
 		return nil, fmt.Errorf("extract video id failed: %v", err)
 	}
+	log.Printf("Extracted video ID: %s", videoID)
 
-	// 1. Create HTTP client
+	// 1. Create HTTP client with HTTP/1.1 transport
 	httpClient := client.New()
 	if d.options.HTTPClient != nil {
 		httpClient.HTTPClient = d.options.HTTPClient
+		// Ensure HTTP/2 is disabled to avoid handshake issues
+		if transport, ok := httpClient.HTTPClient.Transport.(*http.Transport); ok {
+			transport.ForceAttemptHTTP2 = false
+		}
+	} else {
+		// Create default HTTP client with HTTP/1.1 transport
+		httpClient.HTTPClient = &http.Client{
+			Transport: &http.Transport{
+				ForceAttemptHTTP2: false, // Disable HTTP/2
+				MaxIdleConns:      100,
+				IdleConnTimeout:   90 * time.Second,
+			},
+			Timeout: 30 * time.Second,
+		}
 	}
 
 	// 2. Fetch video metadata
+	log.Printf("Fetching video metadata...")
+	// 3. Get player response
 	itClient := innertube.New(httpClient.HTTPClient)
+	itClient.WithBotguard(d.bg.solver, d.bg.mode, d.bg.cache).WithBotguardDebug(d.bg.debug).WithBotguardTTL(d.bg.ttl)
+	// Try ANDROID client to obtain directly signed URLs
+	itClient.WithClient("ANDROID", "20.10.38")
 	playerResponse, err := itClient.GetPlayerResponse(videoID)
 	if err != nil {
 		return nil, fmt.Errorf("get player response failed: %v", err)
 	}
+	log.Printf("Video metadata received, title: %s", playerResponse.VideoDetails.Title)
 
 	// Check playability status and map errors
 	s := strings.ToUpper(playerResponse.PlayabilityStatus.Status)
@@ -146,31 +220,59 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) (*VideoInfo,
 		return nil, errs.ErrVideoUnavailable
 	}
 
-	// 3. Fetch player.js URL
-	playerJSURL, err := cipher.FetchPlayerJS(httpClient.HTTPClient, videoURL)
-	if err != nil {
-		return nil, fmt.Errorf("fetch player.js url failed: %v", err)
-	}
-
-	// 4. Parse formats
+	// 3. Parse formats (no decipher yet)
+	log.Printf("Parsing video formats...")
 	availableFormats, err := formats.ParseFormats(playerResponse)
 	if err != nil {
 		return nil, fmt.Errorf("parse formats failed: %v", err)
 	}
+	log.Printf("Found %d available formats", len(availableFormats))
 
-	// 5. Decrypt signatures (if needed)
-	if err := formats.DecryptSignatures(httpClient.HTTPClient, availableFormats, playerJSURL); err != nil {
-		return nil, fmt.Errorf("decrypt signatures failed: %v", err)
-	}
-
-	// 6. Select a suitable format
+	// 4. Select a suitable format using metadata only
+	log.Printf("Selecting format (selector: %s, desired ext: %s)...", d.options.FormatSelector, d.options.DesiredExt)
 	desiredExt := d.options.DesiredExt
 	selectedFormat := formats.SelectFormat(availableFormats, d.options.FormatSelector, desiredExt)
 	if selectedFormat == nil {
 		return nil, fmt.Errorf("no suitable format found")
 	}
+	log.Printf("Selected format: itag=%d, mime=%s, quality=%s", selectedFormat.Itag, selectedFormat.MimeType, selectedFormat.Quality)
 
-	// 7. Download video
+	// 5. Resolve final URL for the selected format only (decipher s/n if needed)
+	finalURL := selectedFormat.URL
+	var playerJSURL string
+	if strings.TrimSpace(finalURL) == "" || strings.Contains(finalURL, "&n=") || strings.Contains(finalURL, "?n=") {
+		log.Printf("Resolving URL for selected format (need decipher/n)...")
+		pjsURL, perr := cipher.FetchPlayerJS(httpClient.HTTPClient, videoURL)
+		if perr != nil {
+			return nil, fmt.Errorf("fetch player.js url failed: %v", perr)
+		}
+		playerJSURL = pjsURL
+		log.Printf("Player.js URL: %s", playerJSURL)
+
+		// Log player.js version and SHA1(8)
+		if body, src, gerr := cipher.DebugGetPlayerJS(httpClient.HTTPClient, playerJSURL); gerr == nil {
+			h := sha1.Sum(body)
+			shortSHA := fmt.Sprintf("%x", h)[:8]
+			ver := ""
+			if idx := strings.Index(playerJSURL, "/s/player/"); idx >= 0 {
+				rest := playerJSURL[idx+len("/s/player/"):]
+				if p := strings.Index(rest, "/"); p > 0 {
+					ver = rest[:p]
+				}
+			}
+			log.Printf("player.js: url=%s, version=%s, sha1=%s, source=%s", playerJSURL, ver, shortSHA, src)
+		}
+
+		u, rerr := formats.ResolveFormatURL(httpClient.HTTPClient, *selectedFormat, playerJSURL)
+		if rerr != nil {
+			return nil, fmt.Errorf("resolve selected format url failed: %v", rerr)
+		}
+		finalURL = u
+	}
+
+	// 6. Download video
+	log.Printf("Starting video download...")
+	log.Printf("Final media URL: %s", finalURL)
 	dl := downloader.New(httpClient.HTTPClient, func(p downloader.Progress) {
 		if d.options.ProgressFunc != nil {
 			d.options.ProgressFunc(Progress{TotalSize: p.TotalSize, DownloadedSize: p.DownloadedSize, Percent: p.Percent})
@@ -198,11 +300,11 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) (*VideoInfo,
 		}
 	}
 
-	if err := dl.Download(ctx, selectedFormat.URL, outputPath); err != nil {
+	if err := dl.Download(ctx, finalURL, outputPath); err != nil {
 		return nil, fmt.Errorf("download failed: %v", err)
 	}
 
-	// 8. Build result
+	// 7. Build result
 	videoInfo := &VideoInfo{
 		ID:          videoID,
 		Title:       playerResponse.VideoDetails.Title,
@@ -221,6 +323,7 @@ func (d *Downloader) GetPlaylistItems(ctx context.Context, playlistID string, li
 		httpClient.HTTPClient = d.options.HTTPClient
 	}
 	itClient := innertube.New(httpClient.HTTPClient)
+	itClient.WithBotguard(d.bg.solver, d.bg.mode, d.bg.cache).WithBotguardDebug(d.bg.debug).WithBotguardTTL(d.bg.ttl)
 	items, err := itClient.GetPlaylistItems(playlistID, limit)
 	return items, err
 }
@@ -232,6 +335,7 @@ func (d *Downloader) GetPlaylistItemsAll(ctx context.Context, playlistID string,
 		httpClient.HTTPClient = d.options.HTTPClient
 	}
 	itClient := innertube.New(httpClient.HTTPClient)
+	itClient.WithBotguard(d.bg.solver, d.bg.mode, d.bg.cache).WithBotguardDebug(d.bg.debug).WithBotguardTTL(d.bg.ttl)
 	return itClient.GetPlaylistItemsAll(playlistID, limit)
 }
 
