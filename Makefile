@@ -57,6 +57,20 @@ e2e: ## Run end-to-end test (requires YTDLP_E2E=1)
 e2e-url: ## Run e2e test with a specific URL: make e2e-url URL="https://..."
 	YTDLP_E2E=1 YTDLP_E2E_URL="$(URL)" go test -tags e2e ./e2e -v
 
+##@ Download
+
+.PHONY: download
+download: build ## Build and download video: make download URL="https://..."
+	@if [ -z "$(URL)" ]; then \
+		echo "Error: URL is required. Usage: make download URL=\"https://youtube.com/watch?v=...\""; \
+		exit 1; \
+	fi
+	./ytdlp_v2 "$(URL)"
+
+.PHONY: dl
+dl: ## Build and download video (alias for download)
+	@make download URL="$(URL)"
+
 
 ##@ Aliases
 
@@ -79,4 +93,24 @@ l: ## Run linter (golangci-lint)
 .PHONY: f
 f: ## Format code
 	@make format
+
+.PHONY: ty
+ty: ## Tidy go.mod
+	@make tidy
+
+.PHONY: c
+c: ## Run tests with coverage and generate HTML report
+	@make cover
+
+.PHONY: r
+r: ## Run tests with -race
+	@make race
+
+.PHONY: e
+e: ## Run end-to-end test (requires YTDLP_E2E=1)
+	@make e2e
+
+.PHONY: eu
+eu: ## Run e2e test with a specific URL: make eu URL="https://..."
+	@make e2e-url URL="$(URL)"
 
