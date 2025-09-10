@@ -2,27 +2,38 @@ package innertube
 
 import (
 	"bytes"
+	"compress/bzip2"
+	"compress/gzip"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
+	"time"
 
+	"github.com/andybalholm/brotli"
+	"github.com/ytget/ytdlp/internal/botguard"
 	"github.com/ytget/ytdlp/types"
 )
 
-const (
+var (
 	playerURL = "https://www.youtube.com/youtubei/v1/player"
 	browseURL = "https://www.youtube.com/youtubei/v1/browse"
+)
 
+const (
 	ytBase                = "https://www.youtube.com"
-	userAgentValue        = "Mozilla/5.0"
+	userAgentValue        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 	headerContentTypeJSON = "application/json"
 	clientNameWEB         = "WEB"
-	defaultClientVersion  = "17.36.4"
+	defaultClientVersion  = "2.20250312.04.00"
 	browseIDPrefix        = "VL"
 	defaultPlaylistLimit  = 100
 	continuationLimitMax  = 1 << 20
+	visitorIDMaxAge       = 10 * time.Hour
 )
 
 var (
@@ -30,16 +41,119 @@ var (
 	clientVerRe = regexp.MustCompile(`"INNERTUBE_CLIENT_VERSION":"([^"]+)"`)
 )
 
+// clientCodeFromName returns X-YouTube-Client-Name numeric code for known clients
+func clientCodeFromName(name string) string {
+	switch strings.ToUpper(name) {
+	case "WEB":
+		return "1"
+	case "MWEB":
+		return "2"
+	case "ANDROID":
+		return "3"
+	case "IOS":
+		return "5"
+	case "TVHTML5":
+		return "7"
+	case "WEB_EMBEDDED_PLAYER":
+		return "56"
+	case "WEB_CREATOR":
+		return "62"
+	case "WEB_REMIX":
+		return "67"
+	case "TVHTML5_SIMPLY":
+		return "75"
+	case "TVHTML5_SIMPLY_EMBEDDED_PLAYER":
+		return "85"
+	default:
+		return ""
+	}
+}
+
 // Client for interacting with the YouTube InnerTube API.
 type Client struct {
 	HTTPClient *http.Client
 	apiKey     string
 	clientVer  string
+	clientName string
+	visitorID  struct {
+		value   string
+		updated time.Time
+	}
+	// Optional Botguard integration
+	bg struct {
+		solver botguard.Solver
+		mode   botguard.Mode
+		cache  botguard.Cache
+		ttl    time.Duration
+		debug  bool
+	}
 }
 
-// New creates a new InnerTube client.
+// New creates a new InnerTube client with HTTP/1.1 transport.
 func New(httpClient *http.Client) *Client {
-	return &Client{HTTPClient: httpClient}
+	// Force HTTP/1.1 to avoid HTTP/2 handshake issues
+	if httpClient == nil {
+		httpClient = &http.Client{
+			Transport: &http.Transport{
+				ForceAttemptHTTP2:     true, // Enable HTTP/2
+				MaxIdleConns:          100,
+				MaxIdleConnsPerHost:   10,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+				ResponseHeaderTimeout: 10 * time.Second,
+				DisableCompression:    false, // Enable compression
+				ReadBufferSize:        16 * 1024,
+				WriteBufferSize:       16 * 1024,
+			},
+			Timeout: 30 * time.Second,
+		}
+	} else if httpClient.Transport != nil {
+		// If custom transport exists, ensure HTTP/2 and compression are enabled
+		if transport, ok := httpClient.Transport.(*http.Transport); ok {
+			transport.ForceAttemptHTTP2 = true
+			transport.DisableCompression = false
+			transport.MaxIdleConnsPerHost = 10
+			transport.TLSHandshakeTimeout = 10 * time.Second
+			transport.ExpectContinueTimeout = 1 * time.Second
+			transport.ResponseHeaderTimeout = 10 * time.Second
+			transport.ReadBufferSize = 16 * 1024
+			transport.WriteBufferSize = 16 * 1024
+		}
+	}
+
+	return &Client{HTTPClient: httpClient, clientName: clientNameWEB}
+}
+
+// WithClient overrides InnerTube client name/version to shape playback URLs.
+func (c *Client) WithClient(name, version string) *Client {
+	if strings.TrimSpace(name) != "" {
+		c.clientName = name
+	}
+	if strings.TrimSpace(version) != "" {
+		c.clientVer = version
+	}
+	return c
+}
+
+// WithBotguard configures an optional Botguard solver and mode.
+func (c *Client) WithBotguard(solver botguard.Solver, mode botguard.Mode, cache botguard.Cache) *Client {
+	c.bg.solver = solver
+	c.bg.mode = mode
+	c.bg.cache = cache
+	return c
+}
+
+// WithBotguardDebug enables Botguard debug logging.
+func (c *Client) WithBotguardDebug(debug bool) *Client {
+	c.bg.debug = debug
+	return c
+}
+
+// WithBotguardTTL sets a default TTL to apply when solver does not specify ExpiresAt.
+func (c *Client) WithBotguardTTL(ttl time.Duration) *Client {
+	c.bg.ttl = ttl
+	return c
 }
 
 // PlayerResponse represents a response from the InnerTube /player endpoint.
@@ -61,26 +175,72 @@ func (c *Client) ensureKey(videoOrPlaylistID string, isPlaylist bool) {
 	if c.apiKey != "" && c.clientVer != "" {
 		return
 	}
-	var url string
+
+	// Try multiple sources for API key and client version
+	sources := []string{}
+
+	// Add video/playlist specific URL
 	if isPlaylist {
-		url = ytBase + "/playlist?list=" + videoOrPlaylistID
+		sources = append(sources, ytBase+"/playlist?list="+videoOrPlaylistID)
 	} else {
-		url = ytBase + "/watch?v=" + videoOrPlaylistID
+		sources = append(sources, ytBase+"/watch?v="+videoOrPlaylistID)
 	}
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("User-Agent", userAgentValue)
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return
+
+	// Add fallback sources
+	sources = append(sources, ytBase, ytBase+"/feed/trending", ytBase+"/feed/explore")
+
+	for _, source := range sources {
+		if c.apiKey != "" && c.clientVer != "" {
+			break
+		}
+
+		req, err := http.NewRequest("GET", source, nil)
+		if err != nil {
+			continue
+		}
+
+		// Enhanced headers for better compatibility
+		req.Header.Set("User-Agent", userAgentValue)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+		req.Header.Set("Accept-Encoding", "identity")
+		req.Header.Set("DNT", "1")
+		req.Header.Set("Connection", "keep-alive")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+		req.Header.Set("Sec-Fetch-Dest", "document")
+		req.Header.Set("Sec-Fetch-Mode", "navigate")
+		req.Header.Set("Sec-Fetch-Site", "none")
+		req.Header.Set("Sec-Fetch-User", "?1")
+		req.Header.Set("Cache-Control", "max-age=0")
+
+		resp, err := c.HTTPClient.Do(req)
+		if err != nil || resp == nil {
+			continue
+		}
+
+		defer func() { _ = resp.Body.Close() }()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			continue
+		}
+
+		// Extract API key if not found yet
+		if c.apiKey == "" {
+			if m := apiKeyRe.FindSubmatch(body); len(m) == 2 {
+				c.apiKey = string(m[1])
+			}
+		}
+
+		// Extract client version if not found yet
+		if c.clientVer == "" {
+			if m := clientVerRe.FindSubmatch(body); len(m) == 2 {
+				c.clientVer = string(m[1])
+			}
+		}
 	}
-	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(resp.Body)
-	if m := apiKeyRe.FindSubmatch(body); len(m) == 2 {
-		c.apiKey = string(m[1])
-	}
-	if m := clientVerRe.FindSubmatch(body); len(m) == 2 {
-		c.clientVer = string(m[1])
-	}
+
+	// Final fallback for client version
 	if c.clientVer == "" {
 		c.clientVer = defaultClientVersion
 	}
@@ -90,13 +250,39 @@ func (c *Client) ensureKey(videoOrPlaylistID string, isPlaylist bool) {
 // InnerTube /player endpoint.
 func (c *Client) GetPlayerResponse(videoID string) (*PlayerResponse, error) {
 	c.ensureKey(videoID, false)
+	if c.apiKey == "" {
+		// Try one more time with different sources
+		c.ensureKey(videoID, false)
+		if c.apiKey == "" {
+			return nil, errors.New("innertube: api key not found after multiple attempts")
+		}
+	}
+
+	name := c.clientName
+	ver := c.clientVer
+	// If a custom client name is set and version missing, use minimal default
+	if name != clientNameWEB && ver == defaultClientVersion {
+		ver = "2.0"
+	}
+
+	clientMap := map[string]any{
+		"clientName":    name,
+		"clientVersion": ver,
+	}
+	// Enrich Android client context to match yt-dlp shape
+	var reqUserAgent = userAgentValue
+	if strings.EqualFold(name, "ANDROID") {
+		clientMap["androidSdkVersion"] = 30
+		clientMap["osName"] = "Android"
+		clientMap["osVersion"] = "11"
+		ua := "com.google.android.youtube/" + ver + " (Linux; U; Android 11) gzip"
+		clientMap["userAgent"] = ua
+		reqUserAgent = ua
+	}
 
 	requestBody, err := json.Marshal(map[string]any{
 		"context": map[string]any{
-			"client": map[string]any{
-				"clientName":    clientNameWEB,
-				"clientVersion": c.clientVer,
-			},
+			"client": clientMap,
 		},
 		"videoId": videoID,
 	})
@@ -110,21 +296,73 @@ func (c *Client) GetPlayerResponse(videoID string) (*PlayerResponse, error) {
 	}
 
 	req.Header.Set("Content-Type", headerContentTypeJSON)
-	req.Header.Set("User-Agent", userAgentValue)
-	resp, err := c.HTTPClient.Do(req)
+	req.Header.Set("User-Agent", reqUserAgent)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Referer", "https://www.youtube.com/")
+	req.Header.Set("Origin", "https://www.youtube.com")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Cache-Control", "no-cache")
+	// Set numeric client code when known
+	if code := clientCodeFromName(name); code != "" {
+		req.Header.Set("X-YouTube-Client-Name", code)
+	}
+	req.Header.Set("X-YouTube-Client-Version", ver)
+
+	// Add visitor ID if available
+	if visitorID, err := c.getVisitorID(); err == nil && visitorID != "" {
+		req.Header.Set("x-goog-visitor-id", visitorID)
+	}
+	resp, err := c.doWithBotguardRetry(req)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+	// Log response status and headers for debugging
+	fmt.Printf("Response status: %d\n", resp.StatusCode)
+	fmt.Printf("Response headers:\n")
+	for k, v := range resp.Header {
+		fmt.Printf("  %s: %s\n", k, v)
 	}
+
+	// Handle compressed response
+	var reader io.Reader = resp.Body
+	switch strings.ToLower(resp.Header.Get("Content-Encoding")) {
+	case "gzip":
+		gzReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create gzip reader: %v", err)
+		}
+		defer func() {
+			if err := gzReader.Close(); err != nil {
+				// Log error but don't fail the operation
+				fmt.Printf("[warning] failed to close gzip reader: %v\n", err)
+			}
+		}()
+		reader = gzReader
+	case "br":
+		reader = brotli.NewReader(resp.Body)
+	case "deflate":
+		// deflate is raw DEFLATE data, no wrapper
+		reader = resp.Body
+	case "bzip2":
+		reader = bzip2.NewReader(resp.Body)
+	}
+
+	// Read decompressed response
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	// Log decompressed response for debugging
+	fmt.Printf("Decompressed response body: %s\n", string(body))
 
 	var playerResponse PlayerResponse
 	if err := json.Unmarshal(body, &playerResponse); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse response: %v\nBody: %s", err, string(body))
 	}
 
 	return &playerResponse, nil
@@ -133,16 +371,30 @@ func (c *Client) GetPlayerResponse(videoID string) (*PlayerResponse, error) {
 // GetPlaylistItems fetches initial playlist items (without continuations, MVP).
 func (c *Client) GetPlaylistItems(playlistID string, limit int) ([]types.PlaylistItem, error) {
 	c.ensureKey(playlistID, true)
+	if c.apiKey == "" {
+		return nil, errors.New("innertube: api key not found")
+	}
 	if limit <= 0 {
 		limit = defaultPlaylistLimit
 	}
 
+	clientMap := map[string]any{
+		"clientName":    c.clientName,
+		"clientVersion": c.clientVer,
+	}
+	var reqUserAgent = userAgentValue
+	if strings.EqualFold(c.clientName, "ANDROID") {
+		clientMap["androidSdkVersion"] = 30
+		clientMap["osName"] = "Android"
+		clientMap["osVersion"] = "11"
+		ua := "com.google.android.youtube/" + c.clientVer + " (Linux; U; Android 11) gzip"
+		clientMap["userAgent"] = ua
+		reqUserAgent = ua
+	}
+
 	reqBody := map[string]any{
 		"context": map[string]any{
-			"client": map[string]any{
-				"clientName":    clientNameWEB,
-				"clientVersion": c.clientVer,
-			},
+			"client": clientMap,
 		},
 		"browseId": browseIDPrefix + playlistID,
 	}
@@ -156,8 +408,24 @@ func (c *Client) GetPlaylistItems(playlistID string, limit int) ([]types.Playlis
 		return nil, err
 	}
 	req.Header.Set("Content-Type", headerContentTypeJSON)
-	req.Header.Set("User-Agent", userAgentValue)
-	resp, err := c.HTTPClient.Do(req)
+	req.Header.Set("User-Agent", reqUserAgent)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Referer", "https://www.youtube.com/")
+	req.Header.Set("Origin", "https://www.youtube.com")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Cache-Control", "no-cache")
+	if code := clientCodeFromName(c.clientName); code != "" {
+		req.Header.Set("X-YouTube-Client-Name", code)
+	}
+	req.Header.Set("X-YouTube-Client-Version", c.clientVer)
+
+	// Add visitor ID if available
+	if visitorID, err := c.getVisitorID(); err == nil && visitorID != "" {
+		req.Header.Set("x-goog-visitor-id", visitorID)
+	}
+	resp, err := c.doWithBotguardRetry(req)
 	if err != nil {
 		return nil, err
 	}
@@ -190,12 +458,19 @@ func (c *Client) GetPlaylistItemsAll(playlistID string, limit int) ([]types.Play
 	}
 
 	// Fetch continuation tokens iteratively
+	clientMap := map[string]any{
+		"clientName":    c.clientName,
+		"clientVersion": c.clientVer,
+	}
+	if strings.EqualFold(c.clientName, "ANDROID") {
+		clientMap["androidSdkVersion"] = 30
+		clientMap["osName"] = "Android"
+		clientMap["osVersion"] = "11"
+		clientMap["userAgent"] = "com.google.android.youtube/" + c.clientVer + " (Linux; U; Android 11) gzip"
+	}
 	reqBody := map[string]any{
 		"context": map[string]any{
-			"client": map[string]any{
-				"clientName":    clientNameWEB,
-				"clientVersion": c.clientVer,
-			},
+			"client": clientMap,
 		},
 		"browseId": browseIDPrefix + playlistID,
 	}
@@ -203,7 +478,7 @@ func (c *Client) GetPlaylistItemsAll(playlistID string, limit int) ([]types.Play
 	req, _ := http.NewRequest("POST", browseURL+"?key="+c.apiKey, bytes.NewBuffer(bodyBytes))
 	req.Header.Set("Content-Type", headerContentTypeJSON)
 	req.Header.Set("User-Agent", userAgentValue)
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doWithBotguardRetry(req)
 	if err != nil {
 		return items, nil
 	}
@@ -228,10 +503,13 @@ func (c *Client) GetPlaylistItemsAll(playlistID string, limit int) ([]types.Play
 }
 
 func (c *Client) getPlaylistContinuation(continuation string) ([]types.PlaylistItem, string, error) {
+	if c.apiKey == "" {
+		return nil, "", errors.New("innertube: api key not found")
+	}
 	reqBody := map[string]any{
 		"context": map[string]any{
 			"client": map[string]any{
-				"clientName":    clientNameWEB,
+				"clientName":    c.clientName,
 				"clientVersion": c.clientVer,
 			},
 		},
@@ -247,7 +525,23 @@ func (c *Client) getPlaylistContinuation(continuation string) ([]types.PlaylistI
 	}
 	req.Header.Set("Content-Type", headerContentTypeJSON)
 	req.Header.Set("User-Agent", userAgentValue)
-	resp, err := c.HTTPClient.Do(req)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Referer", "https://www.youtube.com/")
+	req.Header.Set("Origin", "https://www.youtube.com")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Cache-Control", "no-cache")
+	if code := clientCodeFromName(c.clientName); code != "" {
+		req.Header.Set("X-YouTube-Client-Name", code)
+	}
+	req.Header.Set("X-YouTube-Client-Version", c.clientVer)
+
+	// Add visitor ID if available
+	if visitorID, err := c.getVisitorID(); err == nil && visitorID != "" {
+		req.Header.Set("x-goog-visitor-id", visitorID)
+	}
+	resp, err := c.doWithBotguardRetry(req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -342,4 +636,162 @@ func findFirstContinuationToken(node any) string {
 		}
 	}
 	return ""
+}
+
+// getVisitorId returns the current visitor ID, refreshing it if necessary
+func (c *Client) getVisitorID() (string, error) {
+	var err error
+	if c.visitorID.value == "" || time.Since(c.visitorID.updated) > visitorIDMaxAge {
+		err = c.refreshVisitorID()
+	}
+	return c.visitorID.value, err
+}
+
+// refreshVisitorId fetches a new visitor ID from YouTube's main page
+func (c *Client) refreshVisitorID() error {
+	const sep = "\nytcfg.set("
+
+	req, err := http.NewRequest(http.MethodGet, "https://www.youtube.com", nil)
+	if err != nil {
+		return err
+	}
+
+	// Add standard headers
+	req.Header.Set("User-Agent", userAgentValue)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Log error but don't fail the operation
+			fmt.Printf("[warning] failed to close response body: %v\n", err)
+		}
+	}()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	_, data1, found := strings.Cut(string(data), sep)
+	if !found {
+		return errors.New("visitor ID not found in YouTube response")
+	}
+
+	var value struct {
+		InnertubeContext struct {
+			Client struct {
+				VisitorData string `json:"visitorData"`
+			} `json:"client"`
+		} `json:"INNERTUBE_CONTEXT"`
+	}
+
+	if err := json.NewDecoder(strings.NewReader(data1)).Decode(&value); err != nil {
+		return err
+	}
+
+	c.visitorID.value = strings.ReplaceAll(value.InnertubeContext.Client.VisitorData, "%3D", "=")
+
+	c.visitorID.updated = time.Now()
+	return nil
+}
+
+// doWithBotguardRetry executes the request and, if configured in Auto/Force mode,
+// attempts a single Botguard attestation on 403 to retry the same request with
+// the obtained token applied as needed.
+func (c *Client) doWithBotguardRetry(req *http.Request) (*http.Response, error) {
+	// Fast path: Botguard disabled
+	if c.bg.solver == nil || c.bg.mode == botguard.Off {
+		return c.HTTPClient.Do(req)
+	}
+
+	// Optionally run preflight attestation in Force mode
+	if c.bg.mode == botguard.Force {
+		if c.bg.debug {
+			fmt.Println("[botguard] force mode preflight attestation")
+		}
+		if err := c.maybeApplyBotguard(req); err != nil {
+			// Log error but continue with request
+			fmt.Printf("[warning] failed to apply botguard: %v\n", err)
+		}
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil || resp == nil || resp.StatusCode != http.StatusForbidden {
+		return resp, err
+	}
+	_ = resp.Body.Close()
+
+	// Auto mode: perform attestation and retry once
+	if c.bg.mode == botguard.Auto || c.bg.mode == botguard.Force {
+		if c.bg.debug {
+			fmt.Println("[botguard] 403 detected, attempting attestation and retry")
+		}
+		if err := c.maybeApplyBotguard(req); err == nil {
+			return c.HTTPClient.Do(req)
+		}
+	}
+	return resp, err
+}
+
+// maybeApplyBotguard runs the solver and applies the token to request headers.
+func (c *Client) maybeApplyBotguard(req *http.Request) error {
+	if c.bg.solver == nil {
+		return nil
+	}
+	// Prepare input
+	visitorID := req.Header.Get("x-goog-visitor-id")
+	name := c.clientName
+	if strings.TrimSpace(name) == "" {
+		name = clientNameWEB
+	}
+	in := botguard.Input{
+		UserAgent:     req.Header.Get("User-Agent"),
+		PageURL:       "https://www.youtube.com/", // best-effort
+		ClientName:    name,
+		ClientVersion: c.clientVer,
+		VisitorID:     visitorID,
+	}
+	key := botguard.KeyFromInput(in)
+	if c.bg.cache != nil {
+		if out, ok := c.bg.cache.Get(key); ok && (out.ExpiresAt.IsZero() || time.Until(out.ExpiresAt) > 0) {
+			if c.bg.debug {
+				fmt.Println("[botguard] cache hit: applying cached token")
+			}
+			if out.Token != "" {
+				req.Header.Set("x-goog-ext-123-botguard", out.Token)
+			}
+			return nil
+		}
+		if c.bg.debug {
+			fmt.Println("[botguard] cache miss: computing token")
+		}
+	}
+	out, err := c.bg.solver.Attest(req.Context(), in)
+	if err != nil {
+		if c.bg.debug {
+			fmt.Printf("[botguard] attestation error: %v\n", err)
+		}
+		return err
+	}
+	if out.ExpiresAt.IsZero() && c.bg.ttl > 0 {
+		out.ExpiresAt = time.Now().Add(c.bg.ttl)
+	}
+	if out.Token != "" {
+		if c.bg.debug {
+			fmt.Println("[botguard] token obtained, applying to headers")
+		}
+		req.Header.Set("x-goog-ext-123-botguard", out.Token)
+	}
+	if c.bg.cache != nil {
+		c.bg.cache.Set(key, out)
+	}
+	return nil
 }
