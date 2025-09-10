@@ -195,9 +195,7 @@ func DecryptSignatures(httpClient *http.Client, formats []types.Format, playerJS
 // then progressive mp4 with avc1, else first available.
 func SelectFormat(formats []types.Format, quality, ext string) *types.Format {
 	all := make([]types.Format, 0, len(formats))
-	for i := range formats {
-		all = append(all, formats[i])
-	}
+	all = append(all, formats...)
 
 	// filter by extension if provided
 	filtered := make([]types.Format, 0, len(all))

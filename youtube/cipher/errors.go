@@ -96,7 +96,3 @@ func IsRegexError(err error) bool {
 	}
 	return false
 }
-
-
-
-

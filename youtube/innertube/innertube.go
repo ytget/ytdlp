@@ -33,7 +33,7 @@ const (
 	browseIDPrefix        = "VL"
 	defaultPlaylistLimit  = 100
 	continuationLimitMax  = 1 << 20
-	visitorIdMaxAge       = 10 * time.Hour
+	visitorIDMaxAge       = 10 * time.Hour
 )
 
 var (
@@ -75,7 +75,7 @@ type Client struct {
 	apiKey     string
 	clientVer  string
 	clientName string
-	visitorId  struct {
+	visitorID  struct {
 		value   string
 		updated time.Time
 	}
@@ -311,8 +311,8 @@ func (c *Client) GetPlayerResponse(videoID string) (*PlayerResponse, error) {
 	req.Header.Set("X-YouTube-Client-Version", ver)
 
 	// Add visitor ID if available
-	if visitorId, err := c.getVisitorId(); err == nil && visitorId != "" {
-		req.Header.Set("x-goog-visitor-id", visitorId)
+	if visitorID, err := c.getVisitorID(); err == nil && visitorID != "" {
+		req.Header.Set("x-goog-visitor-id", visitorID)
 	}
 	resp, err := c.doWithBotguardRetry(req)
 	if err != nil {
@@ -335,7 +335,12 @@ func (c *Client) GetPlayerResponse(videoID string) (*PlayerResponse, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create gzip reader: %v", err)
 		}
-		defer gzReader.Close()
+		defer func() {
+			if err := gzReader.Close(); err != nil {
+				// Log error but don't fail the operation
+				fmt.Printf("[warning] failed to close gzip reader: %v\n", err)
+			}
+		}()
 		reader = gzReader
 	case "br":
 		reader = brotli.NewReader(resp.Body)
@@ -417,8 +422,8 @@ func (c *Client) GetPlaylistItems(playlistID string, limit int) ([]types.Playlis
 	req.Header.Set("X-YouTube-Client-Version", c.clientVer)
 
 	// Add visitor ID if available
-	if visitorId, err := c.getVisitorId(); err == nil && visitorId != "" {
-		req.Header.Set("x-goog-visitor-id", visitorId)
+	if visitorID, err := c.getVisitorID(); err == nil && visitorID != "" {
+		req.Header.Set("x-goog-visitor-id", visitorID)
 	}
 	resp, err := c.doWithBotguardRetry(req)
 	if err != nil {
@@ -533,8 +538,8 @@ func (c *Client) getPlaylistContinuation(continuation string) ([]types.PlaylistI
 	req.Header.Set("X-YouTube-Client-Version", c.clientVer)
 
 	// Add visitor ID if available
-	if visitorId, err := c.getVisitorId(); err == nil && visitorId != "" {
-		req.Header.Set("x-goog-visitor-id", visitorId)
+	if visitorID, err := c.getVisitorID(); err == nil && visitorID != "" {
+		req.Header.Set("x-goog-visitor-id", visitorID)
 	}
 	resp, err := c.doWithBotguardRetry(req)
 	if err != nil {
@@ -634,16 +639,16 @@ func findFirstContinuationToken(node any) string {
 }
 
 // getVisitorId returns the current visitor ID, refreshing it if necessary
-func (c *Client) getVisitorId() (string, error) {
+func (c *Client) getVisitorID() (string, error) {
 	var err error
-	if c.visitorId.value == "" || time.Since(c.visitorId.updated) > visitorIdMaxAge {
-		err = c.refreshVisitorId()
+	if c.visitorID.value == "" || time.Since(c.visitorID.updated) > visitorIDMaxAge {
+		err = c.refreshVisitorID()
 	}
-	return c.visitorId.value, err
+	return c.visitorID.value, err
 }
 
 // refreshVisitorId fetches a new visitor ID from YouTube's main page
-func (c *Client) refreshVisitorId() error {
+func (c *Client) refreshVisitorID() error {
 	const sep = "\nytcfg.set("
 
 	req, err := http.NewRequest(http.MethodGet, "https://www.youtube.com", nil)
@@ -663,7 +668,12 @@ func (c *Client) refreshVisitorId() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Log error but don't fail the operation
+			fmt.Printf("[warning] failed to close response body: %v\n", err)
+		}
+	}()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -687,9 +697,9 @@ func (c *Client) refreshVisitorId() error {
 		return err
 	}
 
-	c.visitorId.value = strings.ReplaceAll(value.InnertubeContext.Client.VisitorData, "%3D", "=")
+	c.visitorID.value = strings.ReplaceAll(value.InnertubeContext.Client.VisitorData, "%3D", "=")
 
-	c.visitorId.updated = time.Now()
+	c.visitorID.updated = time.Now()
 	return nil
 }
 
@@ -707,7 +717,10 @@ func (c *Client) doWithBotguardRetry(req *http.Request) (*http.Response, error) 
 		if c.bg.debug {
 			fmt.Println("[botguard] force mode preflight attestation")
 		}
-		c.maybeApplyBotguard(req)
+		if err := c.maybeApplyBotguard(req); err != nil {
+			// Log error but continue with request
+			fmt.Printf("[warning] failed to apply botguard: %v\n", err)
+		}
 	}
 
 	resp, err := c.HTTPClient.Do(req)
@@ -734,7 +747,7 @@ func (c *Client) maybeApplyBotguard(req *http.Request) error {
 		return nil
 	}
 	// Prepare input
-	visitorId := req.Header.Get("x-goog-visitor-id")
+	visitorID := req.Header.Get("x-goog-visitor-id")
 	name := c.clientName
 	if strings.TrimSpace(name) == "" {
 		name = clientNameWEB
@@ -744,7 +757,7 @@ func (c *Client) maybeApplyBotguard(req *http.Request) error {
 		PageURL:       "https://www.youtube.com/", // best-effort
 		ClientName:    name,
 		ClientVersion: c.clientVer,
-		VisitorID:     visitorId,
+		VisitorID:     visitorID,
 	}
 	key := botguard.KeyFromInput(in)
 	if c.bg.cache != nil {

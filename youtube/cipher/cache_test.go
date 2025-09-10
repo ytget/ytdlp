@@ -92,7 +92,3 @@ func cleanupCaches() {
 	}
 	signatureCacheMu.Unlock()
 }
-
-
-
-

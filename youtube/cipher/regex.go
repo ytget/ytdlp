@@ -19,18 +19,6 @@ type regexStep struct {
 var (
 	regexParseMu    sync.Mutex
 	regexParseCache = make(map[string][]regexStep)
-	// Add fallback patterns for common transformations
-	fallbackPatterns = []struct {
-		name string
-		op   string
-		arg  int
-	}{
-		{"reverse", "rev", 0},
-		{"splice1", "spl", 1},
-		{"splice2", "spl", 2},
-		{"swap1", "swp", 1},
-		{"swap2", "swp", 2},
-	}
 )
 
 func cacheKeyForJS(playerJS string) string {

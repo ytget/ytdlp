@@ -43,6 +43,7 @@ type fileEntry struct {
 	Metadata  map[string]string `json:"metadata,omitempty"`
 }
 
+// Get retrieves a cached output by key
 func (c *FileCache) Get(key string) (Output, bool) {
 	c.mu.RLock()
 	fn := c.filenameForKey(key)
@@ -61,17 +62,17 @@ func (c *FileCache) Get(key string) (Output, bool) {
 		_ = os.Remove(fn)
 		return Output{}, false
 	}
-	return Output{Token: e.Token, ExpiresAt: e.ExpiresAt, Metadata: e.Metadata}, true
+	return Output(e), true
 }
 
+// Set stores a value in the cache
 func (c *FileCache) Set(key string, value Output) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	fn := c.filenameForKey(key)
 	tmp := fn + ".tmp"
-	e := fileEntry{Token: value.Token, ExpiresAt: value.ExpiresAt, Metadata: value.Metadata}
+	e := fileEntry(value)
 	b, _ := json.Marshal(e)
 	_ = os.WriteFile(tmp, b, fs.FileMode(0o644))
 	_ = os.Rename(tmp, fn)
 }
-

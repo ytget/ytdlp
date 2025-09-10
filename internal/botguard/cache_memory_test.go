@@ -22,4 +22,3 @@ func TestMemoryCache_SetGet(t *testing.T) {
 		t.Fatalf("token mismatch: got %q want %q", got.Token, out.Token)
 	}
 }
-

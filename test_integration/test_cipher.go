@@ -216,4 +216,3 @@ func detectFallbackPatterns(playerJS string) []struct {
 
 	return steps
 }
-

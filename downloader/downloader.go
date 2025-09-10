@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -47,11 +46,6 @@ const (
 
 	userAgentValue = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 )
-
-// generateConsentID generates a random consent ID for YouTube cookies
-func generateConsentID() string {
-	return strconv.Itoa(rand.Intn(899) + 100)
-}
 
 // Progress holds information about download progress.
 type Progress struct {

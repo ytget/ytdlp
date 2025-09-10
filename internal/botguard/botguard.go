@@ -51,4 +51,3 @@ func KeyFromInput(in Input) string {
 	// Simple concatenation; callers may hash if needed
 	return in.UserAgent + "|" + in.ClientName + "|" + in.ClientVersion + "|" + in.VisitorID
 }
-
