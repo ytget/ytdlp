@@ -29,12 +29,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: version
-
       - name: Build
         run: go build ./...
 
@@ -45,7 +39,6 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
-          args: run
 
   race:
     runs-on: ubuntu-latest

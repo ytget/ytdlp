@@ -4,31 +4,61 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/ytget/ytdlp"
 	"github.com/ytget/ytdlp/client"
+	"github.com/ytget/ytdlp/internal/botguard"
 )
 
 func main() {
+	// Start pprof HTTP server
+	go func() {
+		log.Println("Starting pprof server on :6060")
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
+	// Enable CPU profiling
+	cpuProfile, err := os.Create("cpu.prof")
+	if err != nil {
+		log.Fatal("could not create CPU profile: ", err)
+	}
+	if err := pprof.StartCPUProfile(cpuProfile); err != nil {
+		log.Fatal("could not start CPU profile: ", err)
+	}
+	defer pprof.StopCPUProfile()
+
 	var (
-		flagFormat      string
-		flagExt         string
-		flagOutput      string
-		flagNoProgress  bool
-		flagTimeout     time.Duration
-		flagRetries     int
-		flagUA          string
-		flagProxy       string
-		flagRateLimit   string
-		flagPlaylist    bool
-		flagLimit       int
-		flagConcurrency int
+		flagFormat       string
+		flagExt          string
+		flagOutput       string
+		flagNoProgress   bool
+		flagTimeout      time.Duration
+		flagRetries      int
+		flagUA           string
+		flagProxy        string
+		flagRateLimit    string
+		flagPlaylist     bool
+		flagLimit        int
+		flagConcurrency  int
+		flagBGMode       string
+		flagBGDebug      bool
+		flagBGCacheMode  string
+		flagBGCacheDir   string
+		flagBGCacheTTL   time.Duration
+		flagBGScriptPath string
+		flagClientName   string
+		flagClientVer    string
+		flagPrintURL     bool
 	)
 
 	flag.StringVar(&flagFormat, "format", "", "Format selector (e.g., 'itag=22', 'best', 'height<=480')")
@@ -43,6 +73,16 @@ func main() {
 	flag.BoolVar(&flagPlaylist, "playlist", false, "Treat input as playlist URL or ID")
 	flag.IntVar(&flagLimit, "limit", 0, "Max items to process for playlist (0 means all)")
 	flag.IntVar(&flagConcurrency, "concurrency", 1, "Parallelism for playlist downloads")
+	flag.StringVar(&flagBGMode, "botguard", "off", "Botguard mode: off|auto|force")
+	flag.BoolVar(&flagBGDebug, "debug-botguard", false, "Enable Botguard debug logs")
+	flag.StringVar(&flagBGCacheMode, "botguard-cache", "mem", "Botguard cache mode: mem|file")
+	flag.StringVar(&flagBGCacheDir, "botguard-cache-dir", "", "Botguard cache directory (for file mode)")
+	flag.DurationVar(&flagBGCacheTTL, "botguard-ttl", 30*time.Minute, "Default Botguard token TTL if solver doesn't set")
+	flag.StringVar(&flagBGScriptPath, "botguard-script", "", "Path to JS script implementing bgAttest(input)")
+	flag.StringVar(&flagClientName, "client-name", "", "Innertube client name (default ANDROID)")
+	flag.StringVar(&flagClientVer, "client-version", "", "Innertube client version (default 20.10.38)")
+	flag.BoolVar(&flagPrintURL, "g", false, "Print final media URL and exit (no download)")
+	flag.BoolVar(&flagPrintURL, "print-url", false, "Print final media URL and exit (no download)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags] <video_or_playlist_url>\n", os.Args[0])
@@ -63,6 +103,39 @@ func main() {
 	cfg := client.Config{Timeout: flagTimeout, Retries: flagRetries, UserAgent: flagUA, ProxyURL: flagProxy}
 	c := client.NewWith(cfg)
 
+	// Determine Botguard mode and initialize solver/cache
+	var bgMode botguard.Mode
+	switch strings.ToLower(strings.TrimSpace(flagBGMode)) {
+	case "force":
+		bgMode = botguard.Force
+	case "auto":
+		bgMode = botguard.Auto
+	default:
+		bgMode = botguard.Off
+	}
+	var solver *botguard.GojaSolver
+	if strings.TrimSpace(flagBGScriptPath) != "" {
+		solver = botguard.NewGojaSolverWithScript(flagBGScriptPath)
+	} else {
+		solver = botguard.NewGojaSolver()
+	}
+
+	var cache botguard.Cache
+	switch strings.ToLower(strings.TrimSpace(flagBGCacheMode)) {
+	case "file":
+		root := flagBGCacheDir
+		if root == "" {
+			root = filepath.Join(os.TempDir(), "ytdlp-bg-cache")
+		}
+		if fc, err := botguard.NewFileCache(root); err == nil {
+			cache = fc
+		} else {
+			cache = botguard.NewMemoryCache()
+		}
+	default:
+		cache = botguard.NewMemoryCache()
+	}
+
 	if flagPlaylist {
 		playlistID, err := parsePlaylistID(input)
 		if err != nil || playlistID == "" {
@@ -82,7 +155,13 @@ func main() {
 			}
 		}
 
-		d := ytdlp.New().WithHTTPClient(c.HTTPClient)
+		d := ytdlp.New().WithHTTPClient(c.HTTPClient).
+			WithBotguard(bgMode, solver, cache).
+			WithBotguardDebug(flagBGDebug).
+			WithBotguardTTL(flagBGCacheTTL)
+		if flagClientName != "" || flagClientVer != "" {
+			d = d.WithInnertubeClient(flagClientName, flagClientVer)
+		}
 		items, err := d.GetPlaylistItemsAll(context.Background(), playlistID, flagLimit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to fetch playlist: %v\n", err)
@@ -102,7 +181,13 @@ func main() {
 		for w := 0; w < flagConcurrency; w++ {
 			go func() {
 				defer wg.Done()
-				localD := ytdlp.New().WithHTTPClient(c.HTTPClient)
+				localD := ytdlp.New().WithHTTPClient(c.HTTPClient).
+					WithBotguard(bgMode, solver, cache).
+					WithBotguardDebug(flagBGDebug).
+					WithBotguardTTL(flagBGCacheTTL)
+				if flagClientName != "" || flagClientVer != "" {
+					localD = localD.WithInnertubeClient(flagClientName, flagClientVer)
+				}
 				if flagFormat != "" || flagExt != "" {
 					localD = localD.WithFormat(flagFormat, flagExt)
 				}
@@ -143,14 +228,20 @@ func main() {
 		return
 	}
 
-	d := ytdlp.New().WithHTTPClient(c.HTTPClient)
+	d := ytdlp.New().WithHTTPClient(c.HTTPClient).
+		WithBotguard(bgMode, solver, cache).
+		WithBotguardDebug(flagBGDebug).
+		WithBotguardTTL(flagBGCacheTTL)
+	if flagClientName != "" || flagClientVer != "" {
+		d = d.WithInnertubeClient(flagClientName, flagClientVer)
+	}
 	if flagFormat != "" || flagExt != "" {
 		d = d.WithFormat(flagFormat, flagExt)
 	}
 	if flagOutput != "" {
 		d = d.WithOutputPath(flagOutput)
 	}
-	if !flagNoProgress {
+	if !flagNoProgress && !flagPrintURL {
 		d = d.WithProgress(func(p ytdlp.Progress) {
 			if p.TotalSize > 0 {
 				_, _ = fmt.Fprintf(os.Stdout, "Downloaded %.1f%%\r", p.Percent)
@@ -159,6 +250,17 @@ func main() {
 	}
 	if bps := parseRate(flagRateLimit); bps > 0 {
 		d = d.WithRateLimit(bps)
+	}
+
+	if flagPrintURL {
+		finalURL, info, err := d.ResolveURL(context.Background(), input)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintln(os.Stdout, finalURL)
+		_ = info
+		return
 	}
 
 	info, err := d.Download(context.Background(), input)

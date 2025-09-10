@@ -5,7 +5,6 @@ SHELL:=bash
 
 .PHONY: help
 help: ## Available commands
-	@clear
 	@echo "Available commands:"
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[0;33m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 	@echo ""
@@ -15,7 +14,11 @@ help: ## Available commands
 
 .PHONY: build
 build: ## Build application
-	go build ./...
+	go build -o ytdlp_v2 ./cmd/ytdlp
+
+.PHONY: install
+install: ## Install application locally
+	go install ./...
 
 .PHONY: test
 test: ## Run tests
@@ -54,12 +57,30 @@ e2e: ## Run end-to-end test (requires YTDLP_E2E=1)
 e2e-url: ## Run e2e test with a specific URL: make e2e-url URL="https://..."
 	YTDLP_E2E=1 YTDLP_E2E_URL="$(URL)" go test -tags e2e ./e2e -v
 
+##@ Download
+
+.PHONY: download
+download: build ## Build and download video: make download URL="https://..."
+	@if [ -z "$(URL)" ]; then \
+		echo "Error: URL is required. Usage: make download URL=\"https://youtube.com/watch?v=...\""; \
+		exit 1; \
+	fi
+	./ytdlp_v2 "$(URL)"
+
+.PHONY: dl
+dl: ## Build and download video (alias for download)
+	@make download URL="$(URL)"
+
 
 ##@ Aliases
 
 .PHONY: b
 b: ## Build application
 	@make build
+
+.PHONY: i
+i: ## Install application locally
+	@make install
 
 .PHONY: t
 t: ## Run tests
@@ -72,4 +93,24 @@ l: ## Run linter (golangci-lint)
 .PHONY: f
 f: ## Format code
 	@make format
+
+.PHONY: ty
+ty: ## Tidy go.mod
+	@make tidy
+
+.PHONY: c
+c: ## Run tests with coverage and generate HTML report
+	@make cover
+
+.PHONY: r
+r: ## Run tests with -race
+	@make race
+
+.PHONY: e
+e: ## Run end-to-end test (requires YTDLP_E2E=1)
+	@make e2e
+
+.PHONY: eu
+eu: ## Run e2e test with a specific URL: make eu URL="https://..."
+	@make e2e-url URL="$(URL)"
 

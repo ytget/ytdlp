@@ -1,6 +1,7 @@
 package client
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -25,6 +26,18 @@ var defaultTransport = &http.Transport{
 	IdleConnTimeout:       90 * time.Second,
 	TLSHandshakeTimeout:   10 * time.Second,
 	ExpectContinueTimeout: 1 * time.Second,
+	ResponseHeaderTimeout: 10 * time.Second,
+	// Enable HTTP/2
+	ForceAttemptHTTP2: true,
+	// Disable compression for regex parsing
+	DisableCompression: true,
+	// Add timeouts for read/write operations
+	ReadBufferSize:  16 * 1024,
+	WriteBufferSize: 16 * 1024,
+	DialContext: (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
 }
 
 // Config holds optional client parameters. Zero values use defaults.
