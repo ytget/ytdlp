@@ -32,7 +32,7 @@ func (s *GojaSolver) Attest(ctx context.Context, input Input) (Output, error) {
 	}
 	script, err := os.ReadFile(s.scriptPath)
 	if err != nil {
-		return Output{}, fmt.Errorf("read script: %w", err)
+		return Output{}, fmt.Errorf("read script: %v", err)
 	}
 	vm := goja.New()
 
@@ -48,7 +48,7 @@ func (s *GojaSolver) Attest(ctx context.Context, input Input) (Output, error) {
 	_ = vm.Set("__bgInput", inObj)
 
 	if _, err := vm.RunScript(s.scriptPath, string(script)); err != nil {
-		return Output{}, fmt.Errorf("run script: %w", err)
+		return Output{}, fmt.Errorf("run script: %v", err)
 	}
 
 	fn, ok := goja.AssertFunction(vm.Get("bgAttest"))
@@ -58,7 +58,7 @@ func (s *GojaSolver) Attest(ctx context.Context, input Input) (Output, error) {
 	// Call bgAttest(__bgInput)
 	res, err := fn(goja.Undefined(), vm.Get("__bgInput"))
 	if err != nil {
-		return Output{}, fmt.Errorf("bgAttest error: %w", err)
+		return Output{}, fmt.Errorf("bgAttest error: %v", err)
 	}
 
 	var out Output

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha1"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -18,12 +17,18 @@ import (
 	"github.com/ytget/ytdlp/downloader"
 	"github.com/ytget/ytdlp/errs"
 	"github.com/ytget/ytdlp/internal/botguard"
+	"github.com/ytget/ytdlp/internal/logger"
 	"github.com/ytget/ytdlp/internal/mimeext"
 	internalSanitize "github.com/ytget/ytdlp/internal/sanitize"
 	"github.com/ytget/ytdlp/types"
 	"github.com/ytget/ytdlp/youtube/cipher"
 	"github.com/ytget/ytdlp/youtube/formats"
 	"github.com/ytget/ytdlp/youtube/innertube"
+)
+
+var (
+	// appLogger is the logger for the main application
+	appLogger = logger.WithComponent(logger.ComponentApp)
 )
 
 // VideoInfo contains basic video metadata and the full list of available formats.
@@ -84,9 +89,11 @@ func startPprofServer() {
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-		log.Printf("Starting pprof server on :6060")
+		appLogger.Info("Starting pprof server on :6060")
 		if err := http.ListenAndServe(":6060", mux); err != nil {
-			log.Printf("pprof server error: %v", err)
+			appLogger.Error("pprof server error", map[string]interface{}{
+				"error": err,
+			})
 		}
 	}()
 }
@@ -165,14 +172,18 @@ func (d *Downloader) WithBotguardTTL(ttl time.Duration) *Downloader {
 
 // ResolveURL performs the metadata fetch and URL resolution, returning the final media URL and basic info.
 func (d *Downloader) ResolveURL(ctx context.Context, videoURL string) (string, *VideoInfo, error) {
-	log.Printf("Starting resolve for URL: %s", videoURL)
+	appLogger.Info("Starting resolve for URL", map[string]interface{}{
+		"url": videoURL,
+	})
 
 	// Extract video ID from URL
 	videoID, err := extractVideoID(videoURL)
 	if err != nil {
 		return "", nil, fmt.Errorf("extract video id failed: %v", err)
 	}
-	log.Printf("Extracted video ID: %s", videoID)
+	appLogger.Debug("Extracted video ID", map[string]interface{}{
+		"video_id": videoID,
+	})
 
 	// Create HTTP client with HTTP/1.1 transport
 	httpClient := client.New()
@@ -204,7 +215,9 @@ func (d *Downloader) ResolveURL(ctx context.Context, videoURL string) (string, *
 	if err != nil {
 		return "", nil, fmt.Errorf("get player response failed: %v", err)
 	}
-	log.Printf("Video metadata received, title: %s", playerResponse.VideoDetails.Title)
+	appLogger.Info("Video metadata received", map[string]interface{}{
+		"title": playerResponse.VideoDetails.Title,
+	})
 
 	// Map playability
 	s := strings.ToUpper(playerResponse.PlayabilityStatus.Status)
@@ -265,7 +278,9 @@ func (d *Downloader) ResolveURL(ctx context.Context, videoURL string) (string, *
 
 // Download retrieves video metadata, resolves URL, and downloads to disk.
 func (d *Downloader) Download(ctx context.Context, videoURL string) (*VideoInfo, error) {
-	log.Printf("Starting download for URL: %s", videoURL)
+	appLogger.Info("Starting download for URL", map[string]interface{}{
+		"url": videoURL,
+	})
 
 	finalURL, info, err := d.ResolveURL(ctx, videoURL)
 	if err != nil {
@@ -273,8 +288,10 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) (*VideoInfo,
 	}
 
 	// 6. Download video
-	log.Printf("Starting video download...")
-	log.Printf("Final media URL: %s", finalURL)
+	appLogger.Info("Starting video download")
+	appLogger.Debug("Final media URL", map[string]interface{}{
+		"url": finalURL,
+	})
 	dl := downloader.New(d.options.HTTPClient, func(p downloader.Progress) {
 		if d.options.ProgressFunc != nil {
 			d.options.ProgressFunc(Progress{TotalSize: p.TotalSize, DownloadedSize: p.DownloadedSize, Percent: p.Percent})
