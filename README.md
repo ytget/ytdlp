@@ -33,7 +33,7 @@ func main() {
 	})
 	info, err := d.Download(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 	if err != nil {
-		panic(err)
+		log.Fatal("Download failed:", err)
 	}
 	fmt.Println("\nSaved:", info.Title)
 }

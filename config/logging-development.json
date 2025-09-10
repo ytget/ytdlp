@@ -1,0 +1,16 @@
+{
+  "level": "DEBUG",
+  "format": "color",
+  "output": "stdout",
+  "components": {
+    "app": true,
+    "downloader": true,
+    "cipher": false,
+    "innertube": false,
+    "client": false,
+    "format": false,
+    "botguard": false
+  },
+  "show_caller": true,
+  "timestamp": true
+}

@@ -1,0 +1,22 @@
+{
+  "level": "INFO",
+  "format": "json",
+  "output": "file:logs/ytdlp.log",
+  "components": {
+    "app": true,
+    "downloader": false,
+    "cipher": false,
+    "innertube": false,
+    "client": false,
+    "format": false,
+    "botguard": false
+  },
+  "show_caller": false,
+  "timestamp": true,
+  "rotation": {
+    "max_size": "100MB",
+    "max_age": "7d",
+    "max_backups": 3,
+    "compress": true
+  }
+}

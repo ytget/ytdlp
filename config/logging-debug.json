@@ -1,0 +1,16 @@
+{
+  "level": "TRACE",
+  "format": "text",
+  "output": "stdout",
+  "components": {
+    "app": true,
+    "downloader": true,
+    "cipher": true,
+    "innertube": true,
+    "client": true,
+    "format": true,
+    "botguard": true
+  },
+  "show_caller": true,
+  "timestamp": true
+}

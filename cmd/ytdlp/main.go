@@ -18,13 +18,16 @@ import (
 	"github.com/ytget/ytdlp"
 	"github.com/ytget/ytdlp/client"
 	"github.com/ytget/ytdlp/internal/botguard"
+	"github.com/ytget/ytdlp/internal/logger"
 )
 
 func main() {
+	// Initialize logger
+	initLogger()
+
 	// Start pprof HTTP server
 	go func() {
-		log.Println("Starting pprof server on :6060")
-		log.Println(http.ListenAndServe("localhost:6060", nil))
+		http.ListenAndServe("localhost:6060", nil)
 	}()
 
 	// Enable CPU profiling
@@ -334,4 +337,39 @@ func isDir(path string) bool {
 		return false
 	}
 	return info.IsDir()
+}
+
+// initLogger initializes the logger from configuration
+func initLogger() {
+	// Try to load from config file first
+	configPath := "config/logging.json"
+	if _, err := os.Stat(configPath); err == nil {
+		config, err := logger.LoadConfigFromFile(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to load logging config: %v\n", err)
+			// Fall back to environment config
+			config = logger.EnvironmentConfig()
+		}
+
+		loggerInstance, err := logger.CreateLoggerWithRotation(config)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
+			// Fall back to default logger
+			loggerInstance = logger.New(logger.DefaultConfig())
+		}
+
+		logger.SetGlobalLogger(loggerInstance)
+		return
+	}
+
+	// Fall back to environment configuration
+	config := logger.EnvironmentConfig()
+	loggerInstance, err := logger.CreateLoggerWithRotation(config)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
+		// Fall back to default logger
+		loggerInstance = logger.New(logger.DefaultConfig())
+	}
+
+	logger.SetGlobalLogger(loggerInstance)
 }
