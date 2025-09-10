@@ -320,12 +320,12 @@ func (c *Client) GetPlayerResponse(videoID string) (*PlayerResponse, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Log response status and headers for debugging
-	fmt.Printf("Response status: %d\n", resp.StatusCode)
-	fmt.Printf("Response headers:\n")
-	for k, v := range resp.Header {
-		fmt.Printf("  %s: %s\n", k, v)
-	}
+	// Log response status and headers for debugging (only in debug mode)
+	// fmt.Printf("Response status: %d\n", resp.StatusCode)
+	// fmt.Printf("Response headers:\n")
+	// for k, v := range resp.Header {
+	// 	fmt.Printf("  %s: %s\n", k, v)
+	// }
 
 	// Handle compressed response
 	var reader io.Reader = resp.Body
@@ -358,7 +358,7 @@ func (c *Client) GetPlayerResponse(videoID string) (*PlayerResponse, error) {
 	}
 
 	// Log decompressed response for debugging
-	fmt.Printf("Decompressed response body: %s\n", string(body))
+	// fmt.Printf("Decompressed response body: %s\n", string(body))
 
 	var playerResponse PlayerResponse
 	if err := json.Unmarshal(body, &playerResponse); err != nil {

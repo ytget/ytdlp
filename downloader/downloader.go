@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ytget/ytdlp/internal/logger"
 )
 
 const (
@@ -45,6 +46,11 @@ const (
 	successMaxHTTPStatusExclusive = 400
 
 	userAgentValue = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+)
+
+var (
+	// downloaderLogger is the logger for the downloader component
+	downloaderLogger = logger.WithComponent(logger.ComponentDownloader)
 )
 
 // Progress holds information about download progress.
@@ -101,20 +107,18 @@ func (d *Downloader) detectTotalSize(ctx context.Context, urlStr string) (int64,
 		getReq.Header.Set(headerCacheControl, "no-cache")
 		getReq.Header.Set(headerRange, "bytes=0-1")
 
-		log.Printf("Downloader: GET range request headers:")
-		for k, v := range getReq.Header {
-			log.Printf("  %s: %s", k, v)
-		}
+		downloaderLogger.Trace("GET range request headers", map[string]interface{}{
+			"headers": getReq.Header,
+		})
 		getResp, err := d.Client.Do(getReq)
 		if err != nil {
 			return 0, err
 		}
 		defer func() { _ = getResp.Body.Close() }()
-		log.Printf("Downloader: GET range response status: %d", getResp.StatusCode)
-		log.Printf("Downloader: GET range response headers:")
-		for k, v := range getResp.Header {
-			log.Printf("  %s: %s", k, v)
-		}
+		downloaderLogger.Trace("GET range response", map[string]interface{}{
+			"status_code": getResp.StatusCode,
+			"headers":     getResp.Header,
+		})
 		cr := getResp.Header.Get(headerContentRange)
 		if cr != "" {
 			parts := strings.Split(cr, "/")
@@ -142,18 +146,16 @@ func (d *Downloader) detectTotalSize(ctx context.Context, urlStr string) (int64,
 	headReq.Header.Set(headerCacheControl, "no-cache")
 	headReq.Header.Set(headerRange, "bytes=0-1")
 
-	log.Printf("Downloader: HEAD request headers:")
-	for k, v := range headReq.Header {
-		log.Printf("  %s: %s", k, v)
-	}
+	downloaderLogger.Trace("HEAD request headers", map[string]interface{}{
+		"headers": headReq.Header,
+	})
 	headResp, err := d.Client.Do(headReq)
 	if err == nil && headResp != nil {
 		defer func() { _ = headResp.Body.Close() }()
-		log.Printf("Downloader: HEAD response status: %d", headResp.StatusCode)
-		log.Printf("Downloader: HEAD response headers:")
-		for k, v := range headResp.Header {
-			log.Printf("  %s: %s", k, v)
-		}
+		downloaderLogger.Trace("HEAD response", map[string]interface{}{
+			"status_code": headResp.StatusCode,
+			"headers":     headResp.Header,
+		})
 		if cr := headResp.Header.Get(headerContentRange); cr != "" {
 			parts := strings.Split(cr, "/")
 			if len(parts) == 2 {
@@ -179,20 +181,18 @@ func (d *Downloader) detectTotalSize(ctx context.Context, urlStr string) (int64,
 	getReq.Header.Set(headerCacheControl, "no-cache")
 	getReq.Header.Set(headerRange, "bytes=0-1")
 
-	log.Printf("Downloader: GET range request headers:")
-	for k, v := range getReq.Header {
-		log.Printf("  %s: %s", k, v)
-	}
+	downloaderLogger.Trace("GET range request headers", map[string]interface{}{
+		"headers": getReq.Header,
+	})
 	getResp, err := d.Client.Do(getReq)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = getResp.Body.Close() }()
-	log.Printf("Downloader: GET range response status: %d", getResp.StatusCode)
-	log.Printf("Downloader: GET range response headers:")
-	for k, v := range getResp.Header {
-		log.Printf("  %s: %s", k, v)
-	}
+	downloaderLogger.Trace("GET range response", map[string]interface{}{
+		"status_code": getResp.StatusCode,
+		"headers":     getResp.Header,
+	})
 	cr := getResp.Header.Get(headerContentRange)
 	if cr != "" {
 		parts := strings.Split(cr, "/")
@@ -224,7 +224,9 @@ func (d *Downloader) sleepForRate(written int64) {
 // Download downloads a file by URL and saves it to outputPath. It supports
 // resuming from an existing temporary file and reports progress periodically.
 func (d *Downloader) Download(ctx context.Context, urlStr string, outputPath string) error {
-	log.Printf("Downloader: Starting download to %s", outputPath)
+	downloaderLogger.Info("Starting download", map[string]interface{}{
+		"output_path": outputPath,
+	})
 
 	tmpPath := outputPath + temporaryFileSuffix
 	var outFile *os.File
@@ -234,28 +236,34 @@ func (d *Downloader) Download(ctx context.Context, urlStr string, outputPath str
 		if err != nil {
 			return fmt.Errorf("failed to open tmp for append: %v", err)
 		}
-		log.Printf("Downloader: Resuming from existing temp file")
+		downloaderLogger.Debug("Resuming from existing temp file")
 	} else {
 		outFile, err = os.Create(tmpPath)
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %v", err)
 		}
-		log.Printf("Downloader: Created new temp file")
+		downloaderLogger.Debug("Created new temp file")
 	}
 	defer func() { _ = outFile.Close() }()
 
 	currentInfo, _ := outFile.Stat()
 	downloaded := currentInfo.Size()
-	log.Printf("Downloader: Already downloaded: %d bytes", downloaded)
+	downloaderLogger.Debug("Already downloaded", map[string]interface{}{
+		"bytes": downloaded,
+	})
 
-	log.Printf("Downloader: Detecting total file size...")
+	downloaderLogger.Debug("Detecting total file size")
 	totalSize, err := d.detectTotalSize(ctx, urlStr)
 	if err != nil {
-		log.Printf("Downloader: Warning: Could not determine total size: %v", err)
-		log.Printf("Downloader: Will download without size information")
+		downloaderLogger.Warn("Could not determine total size", map[string]interface{}{
+			"error": err,
+		})
+		downloaderLogger.Debug("Will download without size information")
 		totalSize = 0
 	} else {
-		log.Printf("Downloader: Total size: %d bytes", totalSize)
+		downloaderLogger.Debug("Total size detected", map[string]interface{}{
+			"bytes": totalSize,
+		})
 	}
 
 	for downloaded < totalSize || totalSize == 0 {
@@ -287,36 +295,40 @@ func (d *Downloader) Download(ctx context.Context, urlStr string, outputPath str
 
 			rangeVal := fmt.Sprintf("bytes=%d-%d", start, end)
 			req.Header.Set(headerRange, rangeVal)
-			log.Printf("Downloader: Requesting range: %s", rangeVal)
+			downloaderLogger.Trace("Requesting range", map[string]interface{}{
+				"range": rangeVal,
+			})
 
-			log.Printf("Downloader: Request headers:")
-			for k, v := range req.Header {
-				log.Printf("  %s: %s", k, v)
-			}
+			downloaderLogger.Trace("Request headers", map[string]interface{}{
+				"headers": req.Header,
+			})
 
 			resp, lastErr = d.Client.Do(req)
 			if lastErr == nil && resp != nil && resp.StatusCode >= successMinHTTPStatusCode && resp.StatusCode < successMaxHTTPStatusExclusive {
-				log.Printf("Downloader: Request successful, status: %d", resp.StatusCode)
-				log.Printf("Downloader: Response headers:")
-				for k, v := range resp.Header {
-					log.Printf("  %s: %s", k, v)
-				}
+				downloaderLogger.Trace("Request successful", map[string]interface{}{
+					"status_code": resp.StatusCode,
+					"headers":     resp.Header,
+				})
 				break
 			}
 			if resp != nil {
-				log.Printf("Downloader: Request failed with status: %d", resp.StatusCode)
-				log.Printf("Downloader: Response headers:")
-				for k, v := range resp.Header {
-					log.Printf("  %s: %s", k, v)
-				}
+				downloaderLogger.Warn("Request failed", map[string]interface{}{
+					"status_code": resp.StatusCode,
+					"headers":     resp.Header,
+				})
 				if resp.Body != nil {
 					body, _ := io.ReadAll(resp.Body)
-					log.Printf("Downloader: Response body: %s", string(body))
+					downloaderLogger.Trace("Response body", map[string]interface{}{
+						"body": string(body),
+					})
 					_ = resp.Body.Close()
 				}
 				lastErr = fmt.Errorf("HTTP status %d", resp.StatusCode)
 			}
-			log.Printf("Downloader: Request failed, attempt %d: %v", attempt+1, lastErr)
+			downloaderLogger.Debug("Request failed, retrying", map[string]interface{}{
+				"attempt": attempt + 1,
+				"error":   lastErr,
+			})
 			time.Sleep(backoff)
 			backoff *= 2
 			if backoff > maxBackoffDuration {
@@ -330,7 +342,7 @@ func (d *Downloader) Download(ctx context.Context, urlStr string, outputPath str
 			return fmt.Errorf("empty response")
 		}
 
-		log.Printf("Downloader: Starting to copy response body...")
+		downloaderLogger.Trace("Starting to copy response body")
 		buf := make([]byte, copyBufferSizeBytes)
 		totalRead := int64(0)
 		for {
@@ -352,7 +364,9 @@ func (d *Downloader) Download(ctx context.Context, urlStr string, outputPath str
 				d.sleepForRate(int64(n))
 			}
 			if rerr == io.EOF {
-				log.Printf("Downloader: Response body completed, read %d bytes", totalRead)
+				downloaderLogger.Trace("Response body completed", map[string]interface{}{
+					"bytes_read": totalRead,
+				})
 				break
 			}
 			if rerr != nil {
