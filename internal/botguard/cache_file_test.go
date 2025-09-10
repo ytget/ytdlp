@@ -43,4 +43,3 @@ func TestFileCache_Expire(t *testing.T) {
 		t.Fatalf("expected expired entry to be a miss")
 	}
 }
-
