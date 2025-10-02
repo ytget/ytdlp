@@ -8,39 +8,42 @@ import (
 )
 
 func TestExtractVideoID(t *testing.T) {
-	cases := map[string]string{
-		"https://www.youtube.com/watch?v=abc123": "abc123",
-		"https://youtu.be/xyz789":                "xyz789",
+	cases := []struct {
+		url  string
+		want string
+	}{
+		{"https://www.youtube.com/watch?v=abc123", "abc123"},
+		{"https://youtu.be/xyz789", "xyz789"},
+		{"https://www.youtube.com/shorts/brZCOVlyPPo", "brZCOVlyPPo"},
+		{"https://youtube.com/shorts/abc123", "abc123"},
+		{"https://www.youtube.com/shorts/xyz789?si=3E6i4QoYvnJjqS_b", "xyz789"},
+		{"https://youtube.com/watch?app=desktop&v=def456&feature=youtu.be", "def456"},
+		{"https://youtu.be/ghi789?si=token", "ghi789"},
 	}
-	for u, want := range cases {
-		got, err := extractVideoID(u)
-		if err != nil || got != want {
-			t.Fatalf("%s -> %s (want %s, err %v)", u, got, want, err)
+	for _, tc := range cases {
+		got, err := extractVideoID(tc.url)
+		if err != nil {
+			t.Fatalf("%s -> error: %v (want %s)", tc.url, err, tc.want)
+		}
+		if got != tc.want {
+			t.Fatalf("%s -> got %s (want %s)", tc.url, got, tc.want)
 		}
 	}
 }
 
 func TestExtractVideoID_Invalid(t *testing.T) {
 	cases := []string{
-		"https://www.youtube.com/shorts/abc123",
 		"https://www.youtube.com/watch?foo=bar",
 		"https://example.com/",
 		"not a url",
+		"https://www.youtube.com/playlist?list=PLxxxx",
+		"https://www.youtube.com/channel/UCxxxx",
 	}
 	for _, u := range cases {
-		got, _ := extractVideoID(u)
-		if got != "" {
-			t.Fatalf("%s -> got=%q; want empty id", u, got)
+		got, err := extractVideoID(u)
+		if got != "" || err == nil {
+			t.Fatalf("%s -> got=%q err=%v; want empty id and error", u, got, err)
 		}
-	}
-
-	// Accept watch variants with extra params
-	if got, err := extractVideoID("https://youtube.com/watch?app=desktop&v=abc123&feature=youtu.be"); err != nil || got != "abc123" {
-		t.Fatalf("watch variants -> got=%q err=%v; want abc123, nil", got, err)
-	}
-	// Accept youtu.be with query params
-	if got, err := extractVideoID("https://youtu.be/xyz789?si=token"); err != nil || got != "xyz789" {
-		t.Fatalf("youtu.be with query -> got=%q err=%v; want xyz789, nil", got, err)
 	}
 }
 
