@@ -5,6 +5,7 @@ Native Go library and CLI to download YouTube videos — no external binaries, A
 ## Status
 - MVP in progress: YouTube only, progressive formats only.
 - Signature deciphering implemented (regex fast-path, JS fallback via otto), `n`-throttling supported.
+- YouTube Shorts fully supported (same as regular videos).
 - No ffmpeg, no merging adaptive streams yet.
 
 ## Install
@@ -43,6 +44,9 @@ func main() {
 ```bash
 # Best mp4 by default
 ytdlp https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+# YouTube Shorts
+ytdlp https://youtube.com/shorts/brZCOVlyPPo
 
 # Select by itag
 ytdlp --format itag=22 https://www.youtube.com/watch?v=dQw4w9WgXcQ
