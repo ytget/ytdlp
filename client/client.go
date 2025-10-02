@@ -11,7 +11,7 @@ const (
 	defaultTimeout = 30 * time.Second
 	defaultRetries = 3
 
-	userAgentValue   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36"
+	userAgentValue   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 	initialBackoff   = 200 * time.Millisecond
 	maxBackoff       = 3 * time.Second
 	successMinCode   = http.StatusOK                  // 200

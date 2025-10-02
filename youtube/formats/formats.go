@@ -155,7 +155,7 @@ func DecryptSignatures(httpClient *http.Client, formats []types.Format, playerJS
 		if query.Get("ratebypass") == "" {
 			query.Set("ratebypass", "yes")
 		}
-		// Encourage redirect behavior to non-alt hosts (matches yt-dlp)
+		// Encourage redirect behavior to non-alt hosts
 		if query.Get("alr") == "" {
 			query.Set("alr", "yes")
 		}
@@ -321,7 +321,7 @@ func ResolveFormatURL(httpClient *http.Client, f types.Format, playerJSURL strin
 			q.Set("ratebypass", "yes")
 			u.RawQuery = q.Encode()
 		}
-		// Encourage redirect behavior to non-alt hosts (matches yt-dlp)
+		// Encourage redirect behavior to non-alt hosts
 		if q.Get("alr") == "" {
 			q.Set("alr", "yes")
 			u.RawQuery = q.Encode()
