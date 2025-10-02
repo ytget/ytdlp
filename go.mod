@@ -1,4 +1,4 @@
-module github.com/ytget/ytdlp
+module github.com/ytget/ytdlp/v2
 
 go 1.24.6
 
