@@ -269,7 +269,7 @@ func (c *Client) GetPlayerResponse(videoID string) (*PlayerResponse, error) {
 		"clientName":    name,
 		"clientVersion": ver,
 	}
-	// Enrich Android client context to match yt-dlp shape
+	// Enrich Android client context for optimal compatibility
 	var reqUserAgent = userAgentValue
 	if strings.EqualFold(name, "ANDROID") {
 		clientMap["androidSdkVersion"] = 30
