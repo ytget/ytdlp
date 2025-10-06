@@ -3,8 +3,8 @@ package ytdlp
 import (
 	"testing"
 
-	"github.com/ytget/ytdlp/types"
-	"github.com/ytget/ytdlp/youtube/formats"
+	"github.com/ytget/ytdlp/v2/types"
+	"github.com/ytget/ytdlp/v2/youtube/formats"
 )
 
 func TestExtractVideoID(t *testing.T) {

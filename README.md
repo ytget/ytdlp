@@ -10,12 +10,12 @@ Native Go library and CLI to download YouTube videos — no external binaries, A
 
 ## Install
 ```bash
-go get github.com/ytget/ytdlp
+go get github.com/ytget/ytdlp/v2
 ```
 
 CLI binary:
 ```bash
-go install github.com/ytget/ytdlp/cmd/ytdlp@latest
+go install github.com/ytget/ytdlp/v2/cmd/ytdlp@latest
 ```
 
 ## Quick Start (library)
@@ -25,7 +25,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/ytget/ytdlp"
+	"github.com/ytget/ytdlp/v2"
 )
 
 func main() {

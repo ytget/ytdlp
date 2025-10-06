@@ -3,7 +3,7 @@ package formats
 import (
 	"testing"
 
-	"github.com/ytget/ytdlp/types"
+	"github.com/ytget/ytdlp/v2/types"
 )
 
 func TestHasDirectURL(t *testing.T) {

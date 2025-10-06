@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ytget/ytdlp"
+	"github.com/ytget/ytdlp/v2"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ytget/ytdlp"
+	"github.com/ytget/ytdlp/v2"
 )
 
 func TestE2E_Download(t *testing.T) {
