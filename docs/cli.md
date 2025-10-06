@@ -44,7 +44,7 @@ Planned flags:
 ### Examples
 ```bash
 # Best mp4
-ytdlp https://www.youtube.com/watch?v=dQw4w9WgXcQ
+ytdlp https://example.com/video/123
 
 # itag
 ytdlp --format itag=22 <url>
@@ -53,7 +53,7 @@ ytdlp --format itag=22 <url>
 ytdlp --format 'height<=480' <url>
 
 # playlist
-ytdlp --playlist --limit 25 --concurrency 4 'https://www.youtube.com/playlist?list=PLxxxx'
+ytdlp --playlist --limit 25 --concurrency 4 'https://example.com/playlist/PLxxxx'
 ```
 
 

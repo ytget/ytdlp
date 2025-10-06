@@ -3,18 +3,18 @@
 ### Library
 ```go
 dl := ytdlp.New().WithFormat("", "mp4").WithProgress(func(p ytdlp.Progress) { /* ... */ })
-info, err := dl.Download(ctx, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+info, err := dl.Download(ctx, "https://example.com/video/123")
 ```
 
 ### CLI
 ```bash
-ytdlp --ext mp4 https://www.youtube.com/watch?v=dQw4w9WgXcQ
+ytdlp --ext mp4 https://example.com/video/123
 
-# YouTube Shorts
-ytdlp https://youtube.com/shorts/brZCOVlyPPo
+# Short-form videos
+ytdlp https://example.com/shorts/abc123
 
 # playlist
-ytdlp --playlist --limit 25 --concurrency 4 'https://www.youtube.com/playlist?list=PLxxxx'
+ytdlp --playlist --limit 25 --concurrency 4 'https://example.com/playlist/PLxxxx'
 ```
 
 
