@@ -3,7 +3,7 @@ package formats
 import (
 	"testing"
 
-	"github.com/ytget/ytdlp/types"
+	"github.com/ytget/ytdlp/v2/types"
 )
 
 func TestSelectFormat_Ext_Itag(t *testing.T) {

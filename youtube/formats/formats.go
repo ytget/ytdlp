@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ytget/ytdlp/types"
-	"github.com/ytget/ytdlp/youtube/cipher"
-	"github.com/ytget/ytdlp/youtube/innertube"
+	"github.com/ytget/ytdlp/v2/types"
+	"github.com/ytget/ytdlp/v2/youtube/cipher"
+	"github.com/ytget/ytdlp/v2/youtube/innertube"
 )
 
 var heightRe = regexp.MustCompile(`([0-9]{3,4})p`)

@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ytget/ytdlp"
-	"github.com/ytget/ytdlp/client"
-	"github.com/ytget/ytdlp/internal/botguard"
+	"github.com/ytget/ytdlp/v2"
+	"github.com/ytget/ytdlp/v2/client"
+	"github.com/ytget/ytdlp/v2/internal/botguard"
 )
 
 func main() {

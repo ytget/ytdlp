@@ -4,7 +4,7 @@ package formats
 import (
 	"strings"
 
-	"github.com/ytget/ytdlp/types"
+	"github.com/ytget/ytdlp/v2/types"
 )
 
 // hasDirectURL returns true when the format already contains a resolvable URL.
