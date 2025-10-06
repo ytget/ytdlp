@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ytget/ytdlp"
-	"github.com/ytget/ytdlp/client"
+	"github.com/ytget/ytdlp/v2"
+	"github.com/ytget/ytdlp/v2/client"
 )
 
 func main() {

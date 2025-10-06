@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ytget/ytdlp/internal/botguard"
+	"github.com/ytget/ytdlp/v2/internal/botguard"
 )
 
 type stubSolver struct{ token string }

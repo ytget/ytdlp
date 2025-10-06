@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/andybalholm/brotli"
-	"github.com/ytget/ytdlp/internal/botguard"
-	"github.com/ytget/ytdlp/types"
+	"github.com/ytget/ytdlp/v2/internal/botguard"
+	"github.com/ytget/ytdlp/v2/types"
 )
 
 var (

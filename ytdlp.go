@@ -14,16 +14,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ytget/ytdlp/client"
-	"github.com/ytget/ytdlp/downloader"
-	"github.com/ytget/ytdlp/errs"
-	"github.com/ytget/ytdlp/internal/botguard"
-	"github.com/ytget/ytdlp/internal/mimeext"
-	internalSanitize "github.com/ytget/ytdlp/internal/sanitize"
-	"github.com/ytget/ytdlp/types"
-	"github.com/ytget/ytdlp/youtube/cipher"
-	"github.com/ytget/ytdlp/youtube/formats"
-	"github.com/ytget/ytdlp/youtube/innertube"
+	"github.com/ytget/ytdlp/v2/client"
+	"github.com/ytget/ytdlp/v2/downloader"
+	"github.com/ytget/ytdlp/v2/errs"
+	"github.com/ytget/ytdlp/v2/internal/botguard"
+	"github.com/ytget/ytdlp/v2/internal/mimeext"
+	internalSanitize "github.com/ytget/ytdlp/v2/internal/sanitize"
+	"github.com/ytget/ytdlp/v2/types"
+	"github.com/ytget/ytdlp/v2/youtube/cipher"
+	"github.com/ytget/ytdlp/v2/youtube/formats"
+	"github.com/ytget/ytdlp/v2/youtube/innertube"
 )
 
 // VideoInfo contains basic video metadata and the full list of available formats.
