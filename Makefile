@@ -62,7 +62,7 @@ e2e-url: ## Run e2e test with a specific URL: make e2e-url URL="https://..."
 .PHONY: download
 download: build ## Build and download video: make download URL="https://..."
 	@if [ -z "$(URL)" ]; then \
-		echo "Error: URL is required. Usage: make download URL=\"https://youtube.com/watch?v=...\""; \
+		echo "Error: URL is required. Usage: make download URL=\"https://example.com/video/123\""; \
 		exit 1; \
 	fi
 	./ytdlp_v2 "$(URL)"

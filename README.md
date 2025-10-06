@@ -1,11 +1,11 @@
 # ytdlp
 
-Native Go library and CLI to download YouTube videos — no external binaries, Android-friendly. MVP focuses on progressive formats (video+audio) like MP4 (itag 22/18). No HLS/DASH or muxing on first stage.
+Native Go library and CLI to download online videos — no external binaries, Android-friendly. MVP focuses on progressive formats (video+audio) like MP4 (itag 22/18). No HLS/DASH or muxing on first stage.
 
 ## Status
-- MVP in progress: YouTube only, progressive formats only.
+- MVP in progress: video platform support, progressive formats only.
 - Signature deciphering implemented (regex fast-path, JS fallback via otto), `n`-throttling supported.
-- YouTube Shorts fully supported (same as regular videos).
+- Short-form videos fully supported (same as regular videos).
 - No ffmpeg, no merging adaptive streams yet.
 
 ## Install
@@ -32,7 +32,7 @@ func main() {
 	d := ytdlp.New().WithOutputPath("").WithProgress(func(p ytdlp.Progress) {
 		fmt.Printf("%.1f%%\r", p.Percent)
 	})
-	info, err := d.Download(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+	info, err := d.Download(context.Background(), "https://example.com/video/123")
 	if err != nil {
 		panic(err)
 	}
@@ -43,19 +43,19 @@ func main() {
 ## Quick Start (CLI)
 ```bash
 # Best mp4 by default
-ytdlp https://www.youtube.com/watch?v=dQw4w9WgXcQ
+ytdlp https://example.com/video/123
 
-# YouTube Shorts
-ytdlp https://youtube.com/shorts/brZCOVlyPPo
+# Short-form videos
+ytdlp https://example.com/shorts/abc123
 
 # Select by itag
-ytdlp --format itag=22 https://www.youtube.com/watch?v=dQw4w9WgXcQ
+ytdlp --format itag=22 https://example.com/video/123
 
 # Constrain by height
-ytdlp --format 'height<=480' https://www.youtube.com/watch?v=dQw4w9WgXcQ
+ytdlp --format 'height<=480' https://example.com/video/123
 
 # Playlist subset
-ytdlp --playlist --limit 25 --concurrency 4 'https://www.youtube.com/playlist?list=PLxxxx'
+ytdlp --playlist --limit 25 --concurrency 4 'https://example.com/playlist/PLxxxx'
 ```
 
 ### Common flags
@@ -94,7 +94,7 @@ items, err := ytdlp.New().GetPlaylistItemsAll(context.Background(), "PLxxxx", 20
 Library returns typed errors for common cases: unavailable/private/age-restricted/geo/rate-limited. Check error values from `errs` package.
 
 ## FAQ
-- Why do I get "age restricted" or "login required"? — YouTube may require authentication for some videos. The library does not handle login; filter or skip such content on client side.
+- Why do I get "age restricted" or "login required"? — Video platforms may require authentication for some videos. The library does not handle login; filter or skip such content on client side.
 - Why 429/ratelimit? — Too many requests from your IP. Slow down requests, add backoff, or try later. The client already retries with exponential backoff for transient errors.
 - Geo blocked? — Content not available in your region. The library returns a typed error; you must handle this on the application side.
 - Download stuck at 0%? — Some hosts enforce throttling via `n` parameter. Ensure decipher is up-to-date; this library implements `n` transformation based on the player.js.
@@ -106,7 +106,7 @@ YTDLP_E2E=1 go test -tags e2e ./e2e -v
 ```
 Optionally specify a URL:
 ```bash
-YTDLP_E2E=1 YTDLP_E2E_URL="https://www.youtube.com/watch?v=dQw4w9WgXcQ" go test -tags e2e ./e2e -v
+YTDLP_E2E=1 YTDLP_E2E_URL="https://example.com/video/123" go test -tags e2e ./e2e -v
 ```
 
 ## Android
@@ -114,13 +114,13 @@ YTDLP_E2E=1 YTDLP_E2E_URL="https://www.youtube.com/watch?v=dQw4w9WgXcQ" go test 
 - Ensure proper storage permissions and SAF/MediaStore usage on app side.
 
 ## Limitations (MVP)
-- YouTube only.
+- Single platform support.
 - Progressive formats only (no adaptive muxing yet).
 - Live streams, HLS/DASH are out of scope (for now).
 
 ## Roadmap (short)
 - Robust decipher/n-throttling parser with test fixtures.
-- Playlists via InnerTube browse/continuations.
+- Playlists via platform API browse/continuations.
 - Adaptive formats + muxing in a later phase.
 
 ## License

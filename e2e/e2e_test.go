@@ -16,7 +16,7 @@ func TestE2E_Download(t *testing.T) {
 	}
 	url := os.Getenv("YTDLP_E2E_URL")
 	if url == "" {
-		url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+		url = "https://example.com/video/123"
 	}
 	dl := ytdlp.New().WithOutputPath("")
 	ctx := context.Background()

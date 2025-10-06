@@ -12,13 +12,13 @@ func TestExtractVideoID(t *testing.T) {
 		url  string
 		want string
 	}{
-		{"https://www.youtube.com/watch?v=abc123", "abc123"},
-		{"https://youtu.be/xyz789", "xyz789"},
-		{"https://www.youtube.com/shorts/brZCOVlyPPo", "brZCOVlyPPo"},
-		{"https://youtube.com/shorts/abc123", "abc123"},
-		{"https://www.youtube.com/shorts/xyz789?si=3E6i4QoYvnJjqS_b", "xyz789"},
-		{"https://youtube.com/watch?app=desktop&v=def456&feature=youtu.be", "def456"},
-		{"https://youtu.be/ghi789?si=token", "ghi789"},
+		{"https://example.com/watch?v=abc123", "abc123"},
+		{"https://ex.be/xyz789", "xyz789"},
+		{"https://example.com/shorts/brZCOVlyPPo", "brZCOVlyPPo"},
+		{"https://example.com/shorts/abc123", "abc123"},
+		{"https://example.com/shorts/xyz789?si=3E6i4QoYvnJjqS_b", "xyz789"},
+		{"https://example.com/watch?app=desktop&v=def456&feature=ex.be", "def456"},
+		{"https://ex.be/ghi789?si=token", "ghi789"},
 	}
 	for _, tc := range cases {
 		got, err := extractVideoID(tc.url)
@@ -33,11 +33,11 @@ func TestExtractVideoID(t *testing.T) {
 
 func TestExtractVideoID_Invalid(t *testing.T) {
 	cases := []string{
-		"https://www.youtube.com/watch?foo=bar",
-		"https://example.com/",
+		"https://example.com/watch?foo=bar",
+		"https://other.com/",
 		"not a url",
-		"https://www.youtube.com/playlist?list=PLxxxx",
-		"https://www.youtube.com/channel/UCxxxx",
+		"https://example.com/playlist?list=PLxxxx",
+		"https://example.com/channel/UCxxxx",
 	}
 	for _, u := range cases {
 		got, err := extractVideoID(u)
