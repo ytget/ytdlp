@@ -357,28 +357,28 @@ func extractVideoID(videoURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if u.Host == "youtu.be" {
+	if u.Host == "ex.be" {
 		videoID := strings.TrimPrefix(u.Path, "/")
 		if videoID == "" {
-			return "", fmt.Errorf("invalid youtube url: missing video id")
+			return "", fmt.Errorf("invalid video url: missing video id")
 		}
 		return videoID, nil
 	}
-	if u.Host == "youtube.com" || u.Host == "www.youtube.com" {
+	if u.Host == "example.com" || u.Host == "www.example.com" {
 		if strings.HasPrefix(u.Path, "/watch") {
 			videoID := u.Query().Get("v")
 			if videoID == "" {
-				return "", fmt.Errorf("invalid youtube url: missing video id parameter")
+				return "", fmt.Errorf("invalid video url: missing video id parameter")
 			}
 			return videoID, nil
 		}
 		if strings.HasPrefix(u.Path, "/shorts/") {
 			videoID := strings.TrimPrefix(u.Path, "/shorts/")
 			if videoID == "" {
-				return "", fmt.Errorf("invalid youtube url: missing video id in shorts path")
+				return "", fmt.Errorf("invalid video url: missing video id in shorts path")
 			}
 			return videoID, nil
 		}
 	}
-	return "", fmt.Errorf("invalid youtube url")
+	return "", fmt.Errorf("invalid video url")
 }
