@@ -1,4 +1,8 @@
-# ytdlp
+# YTDLP
+
+<div align="center">
+  <img src="imgs/logo/YTDLP-logo.png" alt="YTDLP Logo" width="300">
+</div>
 
 Native Go library and CLI to download online videos — no external binaries, Android-friendly. MVP focuses on progressive formats (video+audio) like MP4 (itag 22/18). No HLS/DASH or muxing on first stage.
 
