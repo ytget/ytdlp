@@ -18,12 +18,12 @@ Native Go library and CLI to download online videos — no external binaries, An
 Install from our tap:
 ```bash
 brew tap ytget/ytdlp
-brew install ytdlp-go
+brew install ytdlp
 ```
 
 Or install directly from the repository:
 ```bash
-brew install ytget/ytdlp/Formula/ytdlp-go
+brew install ytget/ytdlp/Formula/ytdlp
 ```
 
 ### Go install
