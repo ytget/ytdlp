@@ -43,7 +43,8 @@ coverage/
 ./deploy/docker-compose.override.yaml
 
 # Project-specific
-ytdlp*
+ytdlp_v2
+ytdlp
 changelog-*
 .*
 tmp*
