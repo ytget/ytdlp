@@ -20,7 +20,7 @@ func TestExtractVideoID(t *testing.T) {
 		{"https://example.com/shorts/xyz789?si=3E6i4QoYvnJjqS_b", "xyz789"},
 		{"https://example.com/watch?app=desktop&v=def456&feature=ex.be", "def456"},
 		{"https://ex.be/ghi789?si=token", "ghi789"},
-		
+
 		// YouTube URLs (new)
 		{"https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"},
 		{"https://www.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"},
@@ -29,7 +29,7 @@ func TestExtractVideoID(t *testing.T) {
 		{"https://youtube.com/shorts/dQw4w9WgXcQ", "dQw4w9WgXcQ"},
 		{"https://youtu.be/dQw4w9WgXcQ?si=token", "dQw4w9WgXcQ"},
 		{"https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10s", "dQw4w9WgXcQ"},
-		
+
 		// Direct video IDs (new)
 		{"dQw4w9WgXcQ", "dQw4w9WgXcQ"},
 		{"abc123def45", "abc123def45"},
