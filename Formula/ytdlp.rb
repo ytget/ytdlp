@@ -1,8 +1,8 @@
 class Ytdlp < Formula
   desc "Native Go library and CLI to download online videos — no external binaries, Android-friendly"
   homepage "https://github.com/ytget/ytdlp"
-  url "https://github.com/ytget/ytdlp/archive/v2.0.1.tar.gz"
-  sha256 "cdd90d834f80372e6abd25a487549fbbbae8fa034cf1f56cc907bb3fa0956958"
+  url "https://github.com/ytget/ytdlp/archive/v2.0.2.tar.gz"
+  sha256 "c2725e28ebd7ffdffa338f5b820c370a9ac9c828f639461a0b8a662a85e8c4de"
   license "MIT"
   head "https://github.com/ytget/ytdlp.git", branch: "main"
 
