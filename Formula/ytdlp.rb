@@ -11,7 +11,7 @@ class Ytdlp < Formula
   def install
     system "go", "mod", "download"
     system "go", "build", "-o", "ytdlp", "./cmd/ytdlp"
-    bin.install "ytdlp"
+    bin.install "ytdlp" => "ytdlp"
   end
 
   test do
