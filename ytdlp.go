@@ -357,7 +357,7 @@ func extractVideoID(videoURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Handle YouTube short URLs (youtu.be)
 	if u.Host == "youtu.be" || u.Host == "ex.be" {
 		videoID := strings.TrimPrefix(u.Path, "/")
@@ -366,10 +366,10 @@ func extractVideoID(videoURL string) (string, error) {
 		}
 		return videoID, nil
 	}
-	
+
 	// Handle YouTube main domain and example.com
-	if u.Host == "youtube.com" || u.Host == "www.youtube.com" || 
-	   u.Host == "example.com" || u.Host == "www.example.com" {
+	if u.Host == "youtube.com" || u.Host == "www.youtube.com" ||
+		u.Host == "example.com" || u.Host == "www.example.com" {
 		if strings.HasPrefix(u.Path, "/watch") {
 			videoID := u.Query().Get("v")
 			if videoID == "" {
@@ -385,7 +385,7 @@ func extractVideoID(videoURL string) (string, error) {
 			return videoID, nil
 		}
 	}
-	
+
 	// Handle direct video ID (no URL)
 	if !strings.Contains(videoURL, "://") && !strings.Contains(videoURL, "/") {
 		// Check if it looks like a video ID (alphanumeric, 11 chars for YouTube)
@@ -393,7 +393,7 @@ func extractVideoID(videoURL string) (string, error) {
 			return videoURL, nil
 		}
 	}
-	
+
 	return "", fmt.Errorf("invalid video url")
 }
 
