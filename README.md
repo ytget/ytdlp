@@ -13,6 +13,20 @@ Native Go library and CLI to download online videos — no external binaries, An
 - No ffmpeg, no merging adaptive streams yet.
 
 ## Install
+
+### Homebrew (macOS/Linux)
+Install from our tap:
+```bash
+brew tap ytget/ytdlp
+brew install ytdlp-go
+```
+
+Or install directly from the repository:
+```bash
+brew install ytget/ytdlp/Formula/ytdlp-go
+```
+
+### Go install
 ```bash
 go get github.com/ytget/ytdlp/v2
 ```
@@ -21,6 +35,11 @@ CLI binary:
 ```bash
 go install github.com/ytget/ytdlp/v2/cmd/ytdlp@latest
 ```
+
+### Manual installation
+Download pre-built binaries from [releases](https://github.com/ytget/ytdlp/releases).
+
+**Note:** Homebrew installation is the recommended method for macOS and Linux users as it provides automatic updates and easier dependency management.
 
 ## Quick Start (library)
 ```go
