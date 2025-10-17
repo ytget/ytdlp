@@ -49,3 +49,7 @@ changelog-*
 .*
 tmp*
 
+# Markdown files (except README.md)
+*.md
+!README.md
+
