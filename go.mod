@@ -1,6 +1,6 @@
 module github.com/ytget/ytdlp/v2
 
-go 1.24.6
+go 1.23
 
 require (
 	github.com/andybalholm/brotli v1.2.0

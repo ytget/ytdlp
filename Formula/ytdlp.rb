@@ -9,6 +9,7 @@ class YtdlpGo < Formula
   depends_on "go" => :build
 
   def install
+    system "go", "mod", "download"
     system "go", "build", "-o", "ytdlp", "./cmd/ytdlp"
     bin.install "ytdlp"
   end
