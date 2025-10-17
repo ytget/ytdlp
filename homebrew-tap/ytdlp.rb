@@ -1,4 +1,4 @@
-class YtdlpGo < Formula
+class Ytdlp < Formula
   desc "Native Go library and CLI to download online videos — no external binaries, Android-friendly"
   homepage "https://github.com/ytget/ytdlp"
   url "https://github.com/ytget/ytdlp/archive/v2.0.1.tar.gz"
