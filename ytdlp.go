@@ -357,14 +357,19 @@ func extractVideoID(videoURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if u.Host == "ex.be" {
+	
+	// Handle YouTube short URLs (youtu.be)
+	if u.Host == "youtu.be" || u.Host == "ex.be" {
 		videoID := strings.TrimPrefix(u.Path, "/")
 		if videoID == "" {
 			return "", fmt.Errorf("invalid video url: missing video id")
 		}
 		return videoID, nil
 	}
-	if u.Host == "example.com" || u.Host == "www.example.com" {
+	
+	// Handle YouTube main domain and example.com
+	if u.Host == "youtube.com" || u.Host == "www.youtube.com" || 
+	   u.Host == "example.com" || u.Host == "www.example.com" {
 		if strings.HasPrefix(u.Path, "/watch") {
 			videoID := u.Query().Get("v")
 			if videoID == "" {
@@ -380,5 +385,24 @@ func extractVideoID(videoURL string) (string, error) {
 			return videoID, nil
 		}
 	}
+	
+	// Handle direct video ID (no URL)
+	if !strings.Contains(videoURL, "://") && !strings.Contains(videoURL, "/") {
+		// Check if it looks like a video ID (alphanumeric, 11 chars for YouTube)
+		if len(videoURL) == 11 && isAlphanumeric(videoURL) {
+			return videoURL, nil
+		}
+	}
+	
 	return "", fmt.Errorf("invalid video url")
+}
+
+// isAlphanumeric checks if string contains only alphanumeric characters
+func isAlphanumeric(s string) bool {
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
 }
