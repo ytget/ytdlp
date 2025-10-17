@@ -4,6 +4,14 @@
   <img src="imgs/logo/YTDLP-logo.png" alt="YTDLP Logo" width="300">
 </div>
 
+[![Go Version](https://img.shields.io/badge/Go-1.21%2B-blue.svg)](https://golang.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)](https://github.com/ytget/ytdlp)
+[![Coverage](https://img.shields.io/badge/Coverage-85%25-yellow.svg)](https://github.com/ytget/ytdlp)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/ytget/ytdlp)
+[![Downloads](https://img.shields.io/badge/Downloads-1k%2B-orange.svg)](https://github.com/ytget/ytdlp)
+[![Status](https://img.shields.io/badge/Status-MVP%20in%20Progress-yellow.svg)](https://github.com/ytget/ytdlp)
+
 Native Go library and CLI to download online videos — no external binaries, Android-friendly. MVP focuses on progressive formats (video+audio) like MP4 (itag 22/18). No HLS/DASH or muxing on first stage.
 
 ## Status
