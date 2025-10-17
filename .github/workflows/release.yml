@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build for multiple platforms
+        run: |
+          # Create build directory
+          mkdir -p dist
+          
+          # Build for different platforms
+          GOOS=darwin GOARCH=amd64 go build -o dist/ytdlp-darwin-amd64 ./cmd/ytdlp
+          GOOS=darwin GOARCH=arm64 go build -o dist/ytdlp-darwin-arm64 ./cmd/ytdlp
+          GOOS=linux GOARCH=amd64 go build -o dist/ytdlp-linux-amd64 ./cmd/ytdlp
+          GOOS=windows GOARCH=amd64 go build -o dist/ytdlp-windows-amd64.exe ./cmd/ytdlp
+
+      - name: Create archives
+        run: |
+          cd dist
+          tar -czf ytdlp-darwin-amd64.tar.gz ytdlp-darwin-amd64
+          tar -czf ytdlp-darwin-arm64.tar.gz ytdlp-darwin-arm64
+          tar -czf ytdlp-linux-amd64.tar.gz ytdlp-linux-amd64
+          zip ytdlp-windows-amd64.zip ytdlp-windows-amd64.exe
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/ytdlp-darwin-amd64.tar.gz
+            dist/ytdlp-darwin-arm64.tar.gz
+            dist/ytdlp-linux-amd64.tar.gz
+            dist/ytdlp-windows-amd64.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
