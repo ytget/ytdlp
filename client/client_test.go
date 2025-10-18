@@ -129,7 +129,7 @@ func TestNewWithInvalidProxy(t *testing.T) {
 func TestGetSuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test response"))
+		_, _ = w.Write([]byte("test response"))
 	}))
 	defer server.Close()
 
@@ -148,7 +148,7 @@ func TestGetSuccess(t *testing.T) {
 		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
 	}
 
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestGetWithCustomUserAgent(t *testing.T) {
@@ -168,7 +168,7 @@ func TestGetWithCustomUserAgent(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestGetWithEmptyUserAgent(t *testing.T) {
@@ -193,7 +193,7 @@ func TestGetWithEmptyUserAgent(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestGetWithZeroRetries(t *testing.T) {
@@ -214,7 +214,7 @@ func TestGetWithZeroRetries(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestGetWithNegativeRetries(t *testing.T) {
@@ -235,7 +235,7 @@ func TestGetWithNegativeRetries(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestProxyFromURLString(t *testing.T) {

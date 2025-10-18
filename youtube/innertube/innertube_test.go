@@ -79,6 +79,7 @@ func TestNew(t *testing.T) {
 			} else {
 				if client == nil {
 					t.Errorf("Expected non-nil client, got nil")
+					return
 				}
 				if client.HTTPClient == nil {
 					t.Errorf("Expected non-nil HTTPClient, got nil")
