@@ -7,7 +7,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.21%2B-blue.svg)](https://golang.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)](https://github.com/ytget/ytdlp)
-[![Coverage](https://img.shields.io/badge/Coverage-85%25-yellow.svg)](https://github.com/ytget/ytdlp)
+[![Coverage](https://img.shields.io/badge/Coverage-52.1%25-orange.svg)](https://github.com/ytget/ytdlp)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/ytget/ytdlp)
 [![Downloads](https://img.shields.io/badge/Downloads-1k%2B-orange.svg)](https://github.com/ytget/ytdlp)
 [![Status](https://img.shields.io/badge/Status-MVP%20in%20Progress-yellow.svg)](https://github.com/ytget/ytdlp)

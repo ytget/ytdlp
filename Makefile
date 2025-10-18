@@ -2,6 +2,10 @@ SHELL:=bash
 
 .DEFAULT_GOAL := help
 
+GREEN := $(shell tput setaf 2 2>/dev/null || echo "")
+YELLOW := $(shell tput setaf 3 2>/dev/null || echo "")
+RED := $(shell tput setaf 1 2>/dev/null || echo "")
+RESET := $(shell tput sgr0 2>/dev/null || echo "")
 
 .PHONY: help
 help: ## Available commands
@@ -21,8 +25,38 @@ install: ## Install application locally
 	go install ./...
 
 .PHONY: test
-test: ## Run tests
-	go test -v ./...
+test: ## Run tests with coverage report
+	go test -v -cover ./... -coverprofile=coverage.out
+	@echo ""
+	@echo "Coverage Summary:"
+	@go tool cover -func=coverage.out | grep total | awk -v red="$(RED)" -v yellow="$(YELLOW)" -v green="$(GREEN)" -v reset="$(RESET)" '{raw=$$3; val=raw; gsub(/[^0-9.]/, "", val); if ((val+0)==0) color=red; else if ((val+0) < 80) color=yellow; else color=green; print "Total coverage: " color raw reset}'
+	@echo "Detailed coverage saved to: coverage.out"
+	@echo "Run 'make coverage' to view detailed report in console"
+	@echo "Run 'make coverage-summary' for quick overview"
+
+.PHONY: coverage
+coverage-by-functions: ## Show detailed coverage by function
+	@if [ -f coverage.out ]; then \
+		echo "Coverage by function:"; \
+		go tool cover -func=coverage.out; \
+	else \
+		echo "No coverage file found. Run 'make test' first."; \
+	fi
+
+.PHONY: coverage-summary
+coverage-by-packages: ## Show coverage summary by package
+	@if [ -f coverage.out ]; then \
+		echo "Coverage by package:"; \
+		echo ""; \
+		go test -coverprofile=coverage.out ./... 2>/dev/null | grep -E "(coverage:|PASS|FAIL)"; \
+		echo ""; \
+		total=$$(go tool cover -func=coverage.out | grep total | awk '{print $$3}' | tr -d '%'); \
+		echo "Total coverage: $$total%"; \
+		echo "Run 'make coverage' for function-level details"; \
+	else \
+		echo "No coverage file found. Run 'make test' first."; \
+	fi
+
 
 .PHONY: lint
 lint: ## Run linter (golangci-lint)
@@ -85,6 +119,14 @@ i: ## Install application locally
 .PHONY: t
 t: ## Run tests
 	@make test
+
+.PHONY: c
+cf: ## Show detailed coverage by functions
+	@make coverage-by-functions
+
+.PHONY: cs
+cp: ## Show coverage summary by packages
+	@make coverage-by-packages
 
 .PHONY: l
 l: ## Run linter (golangci-lint)
