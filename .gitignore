@@ -77,6 +77,12 @@ ytdlp
 # Changelog files (use CHANGELOG.md instead)
 changelog-*
 
+# Coverage and profiling reports
+coverage*.out
+coverage*.html
+coverage*.md
+refactoring*.md
+
 # Build artifacts
 dist/
 build/
