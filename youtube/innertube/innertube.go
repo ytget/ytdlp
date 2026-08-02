@@ -156,6 +156,36 @@ func (c *Client) WithBotguardTTL(ttl time.Duration) *Client {
 	return c
 }
 
+// CaptionName is a localized caption track name payload from Innertube.
+type CaptionName struct {
+	SimpleText string `json:"simpleText"`
+	Runs       []struct {
+		Text string `json:"text"`
+	} `json:"runs"`
+}
+
+// Text returns the best available display name.
+func (n CaptionName) Text() string {
+	if s := strings.TrimSpace(n.SimpleText); s != "" {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range n.Runs {
+		b.WriteString(r.Text)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// CaptionTrackRaw is the raw caption track object from player response.
+type CaptionTrackRaw struct {
+	BaseURL        string      `json:"baseUrl"`
+	Name           CaptionName `json:"name"`
+	VssID          string      `json:"vssId"`
+	LanguageCode   string      `json:"languageCode"`
+	Kind           string      `json:"kind"`
+	IsTranslatable bool        `json:"isTranslatable"`
+}
+
 // PlayerResponse represents a response from the InnerTube /player endpoint.
 type PlayerResponse struct {
 	StreamingData struct {
@@ -169,6 +199,11 @@ type PlayerResponse struct {
 		Status string `json:"status"`
 		Reason string `json:"reason"`
 	} `json:"playabilityStatus"`
+	Captions struct {
+		PlayerCaptionsTracklistRenderer struct {
+			CaptionTracks []CaptionTrackRaw `json:"captionTracks"`
+		} `json:"playerCaptionsTracklistRenderer"`
+	} `json:"captions"`
 }
 
 func (c *Client) ensureKey(videoOrPlaylistID string, isPlaylist bool) {
