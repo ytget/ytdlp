@@ -542,6 +542,10 @@ func getBody(ctx context.Context, httpClient *http.Client, endpoint string) ([]b
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// 403/410 often mean the signed timedtext URL expired.
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusGone || resp.StatusCode == http.StatusUnauthorized {
+			return nil, fmt.Errorf("captions: timedtext expired or forbidden (http %d)", resp.StatusCode)
+		}
 		return nil, fmt.Errorf("captions: http %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))

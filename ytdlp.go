@@ -357,22 +357,105 @@ func (d *Downloader) ListCaptionTracks(ctx context.Context, videoURL string) ([]
 }
 
 // DownloadCaptions downloads and parses captions for preferredLang ("" = auto first manual/any).
-// If track is nil, a track is selected automatically from available tracks.
+//
+// Fallback chain for track discovery (see docs in yt-downloader CAPTIONS.md):
+//  1. ANDROID Innertube player (default)
+//  2. Watch-page ytInitialPlayerResponse when ANDROID returns no tracks
+// Timedtext fetch retries once after refreshing player metadata when URLs expire.
 func (d *Downloader) DownloadCaptions(ctx context.Context, videoURL string, preferredLang string) (*types.Captions, types.CaptionTrack, error) {
 	httpClient, playerResponse, err := d.fetchPlayerResponse(ctx, videoURL)
 	if err != nil {
-		return nil, types.CaptionTrack{}, err
+		return nil, types.CaptionTrack{}, classifyPlayerError(err, playerResponse)
 	}
 	tracks := captions.ParseTracks(playerResponse)
 	track, ok := captions.SelectTrack(tracks, preferredLang)
 	if !ok {
-		return nil, types.CaptionTrack{}, fmt.Errorf("no caption tracks available")
+		return nil, types.CaptionTrack{}, classifyNoCaptions(playerResponse)
 	}
 	caps, err := captions.Download(ctx, httpClient, track)
+	if err != nil && isExpiredTimedtextErr(err) {
+		// Refresh player metadata and retry once with a fresh baseUrl.
+		httpClient2, pr2, err2 := d.fetchPlayerResponse(ctx, videoURL)
+		if err2 == nil && pr2 != nil {
+			tracks2 := captions.ParseTracks(pr2)
+			if t2, ok2 := captions.SelectTrack(tracks2, preferredLang); ok2 {
+				if caps2, err3 := captions.Download(ctx, httpClient2, t2); err3 == nil {
+					return caps2, t2, nil
+				} else {
+					err = err3
+					track = t2
+				}
+			}
+		}
+	}
 	if err != nil {
 		return nil, track, err
 	}
 	return caps, track, nil
+}
+
+func isExpiredTimedtextErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "timedtext expired") ||
+		strings.Contains(s, "http 403") ||
+		strings.Contains(s, "http 401") ||
+		strings.Contains(s, "http 410")
+}
+
+func classifyNoCaptions(pr *innertube.PlayerResponse) error {
+	if pr == nil {
+		return fmt.Errorf("no caption tracks available")
+	}
+	status := strings.ToUpper(strings.TrimSpace(pr.PlayabilityStatus.Status))
+	reason := strings.TrimSpace(pr.PlayabilityStatus.Reason)
+	switch status {
+	case "LOGIN_REQUIRED":
+		if strings.Contains(strings.ToLower(reason), "age") {
+			return fmt.Errorf("captions unavailable: video is age-restricted")
+		}
+		return fmt.Errorf("captions unavailable: video is private or requires sign-in")
+	case "UNPLAYABLE":
+		low := strings.ToLower(reason)
+		if strings.Contains(low, "country") || strings.Contains(low, "region") || strings.Contains(low, "not available") {
+			return fmt.Errorf("captions unavailable: video is region-blocked")
+		}
+		if reason != "" {
+			return fmt.Errorf("captions unavailable: %s", reason)
+		}
+		return fmt.Errorf("captions unavailable: video is unplayable")
+	case "LIVE_STREAM", "LIVE_STREAM_OFFLINE":
+		return fmt.Errorf("captions unavailable: live streams are not supported yet")
+	case "ERROR":
+		if reason != "" {
+			return fmt.Errorf("captions unavailable: %s", reason)
+		}
+	}
+	return fmt.Errorf("no caption tracks available")
+}
+
+func classifyPlayerError(err error, pr *innertube.PlayerResponse) error {
+	if err == nil {
+		return nil
+	}
+	if pr != nil {
+		if e := classifyNoCaptions(pr); e != nil && !strings.Contains(e.Error(), "no caption tracks") {
+			return e
+		}
+	}
+	s := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(s, "age"):
+		return fmt.Errorf("captions unavailable: video is age-restricted")
+	case strings.Contains(s, "private"):
+		return fmt.Errorf("captions unavailable: video is private or requires sign-in")
+	case strings.Contains(s, "live"):
+		return fmt.Errorf("captions unavailable: live streams are not supported yet")
+	default:
+		return err
+	}
 }
 
 func (d *Downloader) fetchPlayerInfo(ctx context.Context, videoURL string) (*http.Client, *VideoInfo, error) {
