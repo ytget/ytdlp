@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<transcript>
+  <text start="0.5" dur="1.2">Hello from fixture</text>
+  <text start="2.0" dur="1.0">Second cue</text>
+</transcript>

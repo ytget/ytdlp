@@ -1,0 +1,11 @@
+{
+  "captions": {
+    "playerCaptionsTracklistRenderer": {
+      "captionTracks": [
+        {"baseUrl":"https://example/tt?lang=en","languageCode":"en","name":{"simpleText":"English"},"kind":"","vssId":".en","isTranslatable":true},
+        {"baseUrl":"https://example/tt?lang=en","languageCode":"en","name":{"simpleText":"English (auto)"},"kind":"asr","vssId":"a.en","isTranslatable":true},
+        {"baseUrl":"https://example/tt?lang=ru","languageCode":"ru","name":{"simpleText":"Russian"},"kind":"","vssId":".ru","isTranslatable":true}
+      ]
+    }
+  }
+}
